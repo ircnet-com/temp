@@ -1,0 +1,491 @@
+Subject: [PATCH] WHOX
+---
+Index: common/numeric_def.h
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/common/numeric_def.h b/common/numeric_def.h
+--- a/common/numeric_def.h	(revision 8d524c1f0133df9686bfc30b7545a14bf4c56e54)
++++ b/common/numeric_def.h	(revision 7386acae68183a08490bcc104a195224717fd7ba)
+@@ -261,6 +261,7 @@
+ #define RPL_VERSION          351
+ 
+ #define RPL_WHOREPLY         352
++#define RPL_WHOSPCRPL        354
+ #define RPL_ENDOFWHO         315
+ #define RPL_NAMREPLY         353
+ #define RPL_ENDOFNAMES       366
+Index: common/struct_def.h
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/common/struct_def.h b/common/struct_def.h
+--- a/common/struct_def.h	(revision 8d524c1f0133df9686bfc30b7545a14bf4c56e54)
++++ b/common/struct_def.h	(revision 7386acae68183a08490bcc104a195224717fd7ba)
+@@ -988,6 +988,24 @@
+ #   error LOCALNICKLEN must not be bigger than NICKLEN
+ #endif
+ 
++// WHO parameter flags
++#define WHO_FLAG_OPERS_ONLY     0x0001
++#define WHO_FLAG_CHANNEL        0x0002
++#define WHO_FLAG_HOP            0x0004
++#define WHO_FLAG_FLAGS          0x0008
++#define WHO_FLAG_HOST           0x0010
++#define WHO_FLAG_IP             0x0020
++#define WHO_FLAG_IDLE           0x0040
++#define WHO_FLAG_NICK           0x0080
++#define WHO_FLAG_INFO           0x0100
++#define WHO_FLAG_SERVER         0x0200
++#define WHO_FLAG_TOKEN          0x0400
++#define WHO_FLAG_USER           0x0800
++#define WHO_FLAG_ACCOUNT        0x1000
++#define WHO_FLAG_OP_LEVEL       0x2000
++#define WHO_FLAG_SID            0x4000
++#define WHO_FLAG_UID            0x8000
++
+ /*
+  * base for channel IDs and UIDs
+  */
+Index: common/support.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/common/support.c b/common/support.c
+--- a/common/support.c	(revision 8d524c1f0133df9686bfc30b7545a14bf4c56e54)
++++ b/common/support.c	(revision 7386acae68183a08490bcc104a195224717fd7ba)
+@@ -816,7 +816,7 @@
+ 		LOCALNICKLEN, TOPICLEN, TOPICLEN, MAXBANS, CHANNELLEN, CHIDLEN);
+ 
+ 	tis[1] = (char *) MyMalloc(BUFSIZE);
+-	sprintf(tis[1],	"PENALTY FNC EXCEPTS=e INVEX=I CASEMAPPING=ascii");
++	sprintf(tis[1],	"PENALTY FNC WHOX EXCEPTS=e INVEX=I CASEMAPPING=ascii");
+ 	if (networkname)
+ 	{
+ 		strcat(tis[1], " NETWORK=");
+Index: irc2.11.2p3.spoof/doc/whox.md
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/irc2.11.2p3.spoof/doc/whox.md b/irc2.11.2p3.spoof/doc/whox.md
+new file mode 100644
+--- /dev/null	(revision 7386acae68183a08490bcc104a195224717fd7ba)
++++ b/irc2.11.2p3.spoof/doc/whox.md	(revision 7386acae68183a08490bcc104a195224717fd7ba)
+@@ -0,0 +1,49 @@
++# WHOX
++## Introduction
++The basic feature is described at https://ircv3.net/specs/extensions/whox
++
++## Additional non-standard fields
++The following additional fields have been added:
++- `S`: return the SID
++- `U`: return the UID
++
++## Examples
++Username/ident, IP address, hostname, nick
++
++    WHO #ircd %cihn
++    :dev.irc.it 354 test #ircd 92.74.191.157 dslb-092-074-191-157.092.074.pools.vodafone-ip.de test
++    :dev.irc.it 354 test #ircd 54.38.153.88 de.ircnet.com patrick_
++    :dev.irc.it 354 test #ircd 255.255.255.255 patrick.users.contempt.chat patrick
++    :dev.irc.it 315 test #ircd :End of WHO list.
++
++Nick and UID
++
++    WHO #ircd %cnU
++    :dev.irc.it 354 test #ircd test 380DAAAAB
++    :dev.irc.it 354 test #ircd patrick_ 380IAAADT
++    :dev.irc.it 354 test #ircd patrick 380IAAADL
++    :dev.irc.it 315 test #ircd :End of WHO list.
++
++SID only
++
++    WHO #ircd %cS
++    :dev.irc.it 354 test #ircd 380D
++    :dev.irc.it 354 test #ircd 380I
++    :dev.irc.it 354 test #ircd 380I
++    :dev.irc.it 315 test #ircd :End of WHO list.
++
++
++All information and token 123
++
++    WHO #ircd %tcuihsnfdlaorSU,123
++    :dev.irc.it 354 test 123 #ircd ~username 92.74.191.157 dslb-092-074-191-157.092.074.pools.vodafone-ip.de dev.irc.it test H 0 262 0 n/a 380D 380DAAAAB :realname
++    :dev.irc.it 354 test 123 #ircd ~patrick 54.38.153.88 de.ircnet.com nova.irc.it patrick_ H 1 0 0 n/a 380I 380IAAADS :email: patrick@ircnet.com
++    :dev.irc.it 354 test 123 #ircd ~patrick 255.255.255.255 patrick.users.contempt.chat nova.irc.it patrick H*@ 1 0 patrick n/a 380I 380IAAADL :Patrick
++    :dev.irc.it 315 test #ircd :End of WHO list.
++    
++Legacy: Former 'o' flag which filters for opers is still working with or without WHOX fields
++
++    who #ircd o%cn 
++    :dev.irc.it 354 test #ircd patrick
++    :dev.irc.it 315 test #ircd :End of WHO list.
++
+Index: ircd/s_err.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/ircd/s_err.c b/ircd/s_err.c
+--- a/ircd/s_err.c	(revision 8d524c1f0133df9686bfc30b7545a14bf4c56e54)
++++ b/ircd/s_err.c	(revision 7386acae68183a08490bcc104a195224717fd7ba)
+@@ -386,7 +386,7 @@
+ /* 351 RPL_VERSION */	":%s 351 %s %s.%s %s %s :%s",
+ /* 352 RPL_WHOREPLY */	":%s 352 %s %s %s %s %s %s %s :%d %s %s",
+ /* 353 RPL_NAMREPLY */	":%s 353 %s %s",
+-/* 354 */ (char *)NULL,
++/* 354 RPL_WHOSPCRPL */ ":%s 354 %s",
+ /* 355 */ (char *)NULL,
+ /* 356 */ (char *)NULL,
+ /* 357 */ (char *)NULL,
+Index: ircd/s_user.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/ircd/s_user.c b/ircd/s_user.c
+--- a/ircd/s_user.c	(revision 8d524c1f0133df9686bfc30b7545a14bf4c56e54)
++++ b/ircd/s_user.c	(revision 7386acae68183a08490bcc104a195224717fd7ba)
+@@ -31,7 +31,14 @@
+ #include "s_externs.h"
+ #undef S_USER_C
+ 
++struct who_opts
++{
++    int flags;
++    const char *token;
++};
++
+ static void	save_user (aClient *, aClient *, char *);
++static int snprintf_append(char *str, int size, int pos, const char *fmt, ...);
+ 
+ static char buf[BUFSIZE], buf2[BUFSIZE];
+ 
+@@ -1673,14 +1680,31 @@
+ 	return m_message(cptr, sptr, parc, parv, 1);
+ }
+ 
++int snprintf_append(char *str, int size, int pos, const char *fmt, ...) {
++    int ret, max;
++
++    if(pos >= size)
++        return 0;
++    else
++        max = size - pos;
++
++    va_list ap;
++    va_start(ap, fmt);
++    ret = vsnprintf(str + pos, max, fmt, ap);
++    va_end(ap);
++
++    return ret;
++}
++
+ /*
+ ** who_one
+-**	sends one RPL_WHOREPLY to sptr concerning acptr & repchan
++**	sends one RPL_WHOREPLY or RPL_WHOSPCRPL to sptr concerning acptr & repchan
+ */
+ static	void	who_one(aClient *sptr, aClient *acptr, aChannel *repchan,
+-		Link *lp)
++		Link *lp, struct who_opts *opts)
+ {
+ 	char	status[5];
++	char *s;
+ 	int	i = 0;
+ 
+ 	if (acptr->user->flags & FLAGS_AWAY)
+@@ -1699,18 +1723,79 @@
+ 			status[i++] = '+';
+ 	    }
+ 	status[i] = '\0';
+-	sendto_one(sptr, replies[RPL_WHOREPLY], ME, BadTo(sptr->name),
+-		   (repchan) ? (repchan->chname) : "*", acptr->user->username,
+-		   acptr->user->host, acptr->user->server, acptr->name,
+-		   status, acptr->hopcount, acptr->user->servp->sid, acptr->info);
++
++	if((opts->flags & ~WHO_FLAG_OPERS_ONLY) != 0) {
++        char buf[BUFSIZE];
++        int len = snprintf(buf, BUFSIZE, replies[RPL_WHOSPCRPL], ME, BadTo(sptr->name));
++
++        if (opts->flags & WHO_FLAG_TOKEN) {
++            len += snprintf_append(buf, BUFSIZE, len, " %s", opts->token != NULL ? opts->token : "0");
++        }
++        if (opts->flags & WHO_FLAG_CHANNEL) {
++            len += snprintf_append(buf, BUFSIZE, len, " %s", (repchan) ? (repchan->chname) : "*");
++        }
++        if (opts->flags & WHO_FLAG_USER) {
++            len += snprintf_append(buf, BUFSIZE, len, " %s", acptr->user->username);
++        }
++        if (opts->flags & WHO_FLAG_IP) {
++            len += snprintf_append(buf, BUFSIZE, len, " %s", get_client_ip(acptr));
++        }
++        if (opts->flags & WHO_FLAG_HOST) {
++            len += snprintf_append(buf, BUFSIZE, len, " %s", acptr->user->host);
++        }
++        if (opts->flags & WHO_FLAG_SERVER) {
++            len += snprintf_append(buf, BUFSIZE, len, " %s", acptr->user->server);
++        }
++        if (opts->flags & WHO_FLAG_NICK) {
++            len += snprintf_append(buf, BUFSIZE, len, " %s", acptr->name);
++        }
++        if (opts->flags & WHO_FLAG_FLAGS) {
++            len += snprintf_append(buf, BUFSIZE, len, " %s", status);
++        }
++        if (opts->flags & WHO_FLAG_HOP) {
++            len += snprintf_append(buf, BUFSIZE, len, " %d", acptr->hopcount);
++        }
++        if (opts->flags & WHO_FLAG_IDLE) {
++            len += snprintf_append(buf, BUFSIZE, len, " %ld",
++                                   MyClient(acptr) ? (long)(timeofday - acptr->user->last): 0);
++        }
++        if (opts->flags & WHO_FLAG_ACCOUNT) {
++            if (IsSASLAuthed(acptr) && acptr->user->sasl_user != NULL)
++            {
++                len += snprintf_append(buf, BUFSIZE, len, " %s", acptr->user->sasl_user);
++            }
++            else {
++                len += snprintf_append(buf, BUFSIZE, len, " 0");
++            }
++        }
++        if (opts->flags & WHO_FLAG_OP_LEVEL) {
++            len += snprintf_append(buf, BUFSIZE, len, " n/a");
++        }
++        if (opts->flags & WHO_FLAG_SID) {
++            len += snprintf_append(buf, BUFSIZE, len, " %s", acptr->user->servp->sid);
++        }
++        if (opts->flags & WHO_FLAG_UID) {
++            len += snprintf_append(buf, BUFSIZE, len, " %s", acptr->user->uid);
++        }
++        if (opts->flags & WHO_FLAG_INFO) {
++            len += snprintf_append(buf, BUFSIZE, len, " :%s", acptr->info);
++        }
++
++        sendto_one(sptr, buf);
++    }
++	else {
++        sendto_one(sptr, replies[RPL_WHOREPLY], ME, BadTo(sptr->name),
++                   (repchan) ? (repchan->chname) : "*", acptr->user->username,
++                   acptr->user->host, acptr->user->server, acptr->name,
++                   status, acptr->hopcount, acptr->user->servp->sid, acptr->info);
++    }
+ }
+-
+ 
+ /*
+ ** who_channel
+ **	lists all users on a given channel
+ */
+-static	void	who_channel(aClient *sptr, aChannel *chptr, int oper)
++static	void	who_channel(aClient *sptr, aChannel *chptr, struct who_opts *opts)
+ {
+ 	Reg	Link	*lp;
+ 	int	member;
+@@ -1722,7 +1807,7 @@
+ 		{
+ 			for (lp = chptr->members; lp; lp = lp->next)
+ 			{
+-				if (oper && !IsAnOper(lp->value.cptr))
++				if ((opts->flags & WHO_FLAG_OPERS_ONLY) && !IsAnOper(lp->value.cptr))
+ 				{
+ 					continue;
+ 				}
+@@ -1730,13 +1815,13 @@
+ 				{
+ 					continue;
+ 				}
+-				who_one(sptr, lp->value.cptr, chptr, lp);
++				who_one(sptr, lp->value.cptr, chptr, lp, opts);
+ 			}
+ 		}
+ 	}
+ 	else if ((lp = find_user_link(chptr->members, sptr)))
+ 	{
+-		who_one(sptr, lp->value.cptr, chptr, lp);
++		who_one(sptr, lp->value.cptr, chptr, lp, opts);
+ 	}
+ }
+ 
+@@ -1747,7 +1832,7 @@
+ **	
+ **	Reduced CPU load - 05/2001
+ */
+-static	void	who_find(aClient *sptr, char *mask, int oper)
++static	void	who_find(aClient *sptr, char *mask, struct who_opts *opts)
+ {
+ 	aChannel *chptr = NULL;
+ 	Link	*lp,*lp2;
+@@ -1770,7 +1855,7 @@
+ 				continue;
+ 			}
+ 			
+-			if (oper && !IsAnOper(acptr))
++			if ((opts->flags & WHO_FLAG_OPERS_ONLY) && !IsAnOper(acptr))
+ 			{
+ 				continue;
+ 			}
+@@ -1786,7 +1871,7 @@
+ 			     match(mask, acptr->user->host) == 0 ||
+ 			     match(mask, acptr->user->server) == 0 ||
+ 			     match(mask, acptr->info) == 0)
+-				who_one(sptr, acptr, chptr, NULL);
++				who_one(sptr, acptr, chptr, NULL, opts);
+ 		
+ 		}
+ 	}
+@@ -1814,7 +1899,7 @@
+ 		}
+ 		
+ 		/* we wanted only opers */
+-		if (oper && !IsAnOper(acptr))
++		if ((opts->flags & WHO_FLAG_OPERS_ONLY) && !IsAnOper(acptr))
+ 		{
+ 			continue;
+ 		}
+@@ -1830,11 +1915,84 @@
+ 		     match(mask, acptr->user->host) == 0 ||
+ 		     match(mask, acptr->user->server) == 0 ||
+ 		     match(mask, acptr->info) == 0)
+-			who_one(sptr, acptr, NULL, NULL);
++			who_one(sptr, acptr, NULL, NULL, opts);
+ 	}
+ 	
+ }
++
++void parse_who_arg(char *arg, struct who_opts *opts)
++{
++    char *s;
++
++    // WHO <mask> o
++    if(*arg == 'o') {
++        opts->flags |= WHO_FLAG_OPERS_ONLY;
++    }
+ 
++    // WHOX
++    if((s = strchr(arg, '%')) != NULL) {
++        char buf[BUFSIZE];
++        s++;
++
++        for (; *s; s++) {
++            switch (*s) {
++                case 't' :
++                    opts->flags |= WHO_FLAG_TOKEN;
++                    break;
++                case 'c' :
++                    opts->flags |= WHO_FLAG_CHANNEL;
++                    break;
++                case 'u' :
++                    opts->flags |= WHO_FLAG_USER;
++                    break;
++                case 'i' :
++                    opts->flags |= WHO_FLAG_IP;
++                    break;
++                case 'h' :
++                    opts->flags |= WHO_FLAG_HOST;
++                    break;
++                case 's' :
++                    opts->flags |= WHO_FLAG_SERVER;
++                    break;
++                case 'n' :
++                    opts->flags |= WHO_FLAG_NICK;
++                    break;
++                case 'f' :
++                    opts->flags |= WHO_FLAG_FLAGS;
++                    break;
++                case 'd' :
++                    opts->flags |= WHO_FLAG_HOP;
++                    break;
++                case 'l' :
++                    opts->flags |= WHO_FLAG_IDLE;
++                    break;
++                case 'a' :
++                    opts->flags |= WHO_FLAG_ACCOUNT;
++                    break;
++                case 'o' :
++                    opts->flags |= WHO_FLAG_OP_LEVEL;
++                    break;
++                case 'S' :
++                    opts->flags |= WHO_FLAG_SID;
++                    break;
++                case 'U' :
++                    opts->flags |= WHO_FLAG_UID;
++                    break;
++                case 'r' :
++                    opts->flags |= WHO_FLAG_INFO;
++                    break;
++                case ',':
++                    s++;
++                    int token_len = strlen(s);
++                    if (*s && token_len <= 3)
++                        opts->token = s;
++                    s += token_len;
++                    s--;
++                    break;
++            }
++        }
++    }
++}
+ 
+ /*
+ ** m_who
+@@ -1845,18 +2003,25 @@
+ int	m_who(aClient *cptr, aClient *sptr, int parc, char *parv[])
+ {
+ 	aChannel *chptr;
+-	int	oper = parc > 2 ? (*parv[2] == 'o' ): 0; /* Show OPERS only */
+-	int	penalty = 0;
+-	char	*p, *mask, *channame;
++	int penalty = 0;
++    char *p, *mask, *channame;
++    struct who_opts opts;
++
++    opts.flags = 0;
++    opts.token = NULL;
+ 
+ 	if (parc < 2)
+ 	{
+-		who_find(sptr, NULL, oper);
++		who_find(sptr, NULL, &opts);
+ 		sendto_one(sptr, replies[RPL_ENDOFWHO], ME, BadTo(parv[0]), "*");
+ 		/* it was very CPU intensive */
+ 		return MAXPENALTY;
+ 	}
+ 
++	if(parc > 2) {
++        parse_who_arg(parv[2], &opts);
++	}
++
+ 	/* get rid of duplicates */
+ 	parv[1] = canonize(parv[1]);
+ 
+@@ -1913,7 +2078,7 @@
+ 			chptr = find_channel(channame, NULL);
+ 			if (chptr)
+ 			{
+-				who_channel(sptr, chptr, oper);
++				who_channel(sptr, chptr, &opts);
+ 			}
+ 			else
+ 			{
+@@ -1943,7 +2108,7 @@
+ 			if (acptr)
+ 			{
+ 				/* We found client, so send WHO for it */
+-				who_one(sptr, acptr, NULL, NULL);
++				who_one(sptr, acptr, NULL, NULL, &opts);
+ 			}
+ 			else
+ 			{
+@@ -1955,7 +2120,7 @@
+ 				/* simplify mask */
+ 				(void)collapse(mask);
+ 
+-				who_find(sptr, mask, oper);
++				who_find(sptr, mask, &opts);
+ 				penalty += MAXPENALTY;
+ 			}
+ 		}

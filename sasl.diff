@@ -1,0 +1,3427 @@
+Subject: [PATCH] SASL
+---
+Index: ircd/s_misc_ext.h
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/ircd/s_misc_ext.h b/ircd/s_misc_ext.h
+--- a/ircd/s_misc_ext.h	(revision 8d524c1f0133df9686bfc30b7545a14bf4c56e54)
++++ b/ircd/s_misc_ext.h	(date 1696269853917)
+@@ -42,6 +42,9 @@
+ EXTERN int check_registered_service (aClient *sptr);
+ EXTERN char *get_client_name (aClient *sptr, int showip);
+ EXTERN char *get_client_host (aClient *cptr);
++#ifdef SPOOF
++EXTERN char *get_client_ip (aClient *cptr);
++#endif
+ EXTERN void get_sockhost (Reg aClient *cptr, Reg char *host);
+ EXTERN char *my_name_for_link (char *name, Reg int count);
+ EXTERN int mark_blind_servers (aClient *cptr, aClient *server);
+Index: common/parse.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/common/parse.c b/common/parse.c
+--- a/common/parse.c	(revision 8d524c1f0133df9686bfc30b7545a14bf4c56e54)
++++ b/common/parse.c	(date 1696269853917)
+@@ -57,6 +57,9 @@
+ { "KILL",     2, MPAR, { _m(m_kill), _m(m_nopriv), _m(m_kill), _m(m_nop), _m(m_unreg) } },
+ { "SAVE",     1, MPAR, { _m(m_save), _m(m_nop), _m(m_nop), _m(m_nop), _m(m_unreg) } },
+ { "USER",     4, MPAR, { _m(m_nop), _m(m_reg), _m(m_reg), _m(m_nop), _m(m_user) } },
++{ "CAP",      1, MPAR, { _m(m_nop), _m(m_cap), _m(m_cap), _m(m_nop), _m(m_cap) } },
++{ "AUTHENTICATE",   1, MPAR, { _m(m_nop), _m(m_nop), _m(m_nop), _m(m_nop), _m(m_authenticate) } },
++{ "SASL",     4, MPAR, { _m(m_sasl), _m(m_nop), _m(m_nop), _m(m_sasl), _m(m_nop) } },
+ { "AWAY",     0, MPAR, { _m(m_nop), _m(m_away), _m(m_away), _m(m_nop), _m(m_unreg) } },
+ { "UMODE",    1, MPAR, { _m(m_nop), _m(m_umode), _m(m_umode), _m(m_nop), _m(m_unreg) } },
+ { "ISON",     1,    1, { _m(m_ison), _m(m_ison), _m(m_ison), _m(m_ison), _m(m_unreg) } },
+@@ -91,7 +94,7 @@
+ { "SERVICE",  4, MPAR, { _m(m_service), _m(m_nop), _m(m_nop), _m(m_nop), _m(m_service) } },
+ { "EOB",      0, MPAR, { _m(m_eob), _m(m_nop), _m(m_nop), _m(m_nop), _m(m_unreg) } },
+ { "EOBACK",   0, MPAR, { _m(m_eoback), _m(m_nop), _m(m_nop), _m(m_nop), _m(m_unreg) } },
+-{ "ENCAP",    2, MPAR, { _m(m_encap), _m(m_nop), _m(m_nop), _m(m_nop), _m(m_nop) } },
++{ "ENCAP",    2, MPAR, { _m(m_encap), _m(m_nop), _m(m_nop), _m(m_encap), _m(m_nop) } },
+ { "SDIE",     0, MPAR, { _m(m_sdie), _m(m_nop), _m(m_nop), _m(m_nop), _m(m_unreg) } },
+ #ifdef	USE_SERVICES
+ { "SERVSET",  1, MPAR, { _m(m_nop), _m(m_nop), _m(m_nop), _m(m_servset), _m(m_nop) } },
+@@ -902,7 +905,7 @@
+ 	    {
+ 		sendto_serv_butone(NULL, ":%s KILL %s :%s (%s[%s] != %s)",
+ 				   me.name,
+-				   sptr->user ? sptr->user->uid : sptr->name,
++				   *sptr->uid ? sptr->uid : sptr->name,
+ 				   me.name, sptr->name, sptr->from->name,
+ 				   get_client_name(cptr, TRUE));
+ 		sptr->flags |= FLAGS_KILLED;
+Index: common/support.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/common/support.c b/common/support.c
+--- a/common/support.c	(revision 8d524c1f0133df9686bfc30b7545a14bf4c56e54)
++++ b/common/support.c	(date 1696269853917)
+@@ -782,7 +782,11 @@
+ char	*make_version(void)
+ {
+ 	int ve, re, mi, dv, pl;
++#ifdef VERSIONLEN
++	char ver[VERSIONLEN];
++#else
+ 	char ver[15];
++#endif
+ 
+ 	sscanf(PATCHLEVEL, "%2d%2d%2d%2d%2d", &ve, &re, &mi, &dv, &pl);
+ 	/* version & revision */
+@@ -794,6 +798,12 @@
+ 		sprintf(ver + strlen(ver), "%c%d", DEVLEVEL, dv);
+ 	if (pl)	/* patchlevel */
+ 		sprintf(ver + strlen(ver), "p%d", pl);
++#ifdef PASSOPTS
++	strcat(ver, "+po");
++#endif
++#ifdef SPOOF
++	strcat(ver, "+spoof");
++#endif
+ 	return mystrdup(ver);
+ }
+ 
+Index: common/numeric_def.h
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/common/numeric_def.h b/common/numeric_def.h
+--- a/common/numeric_def.h	(revision 8d524c1f0133df9686bfc30b7545a14bf4c56e54)
++++ b/common/numeric_def.h	(date 1696269853917)
+@@ -236,6 +236,22 @@
+ #define RPL_ENDOFWHOIS       318
+ #define RPL_WHOISCHANNELS    319
+ 
++#ifdef WHOISEXTRA
++#define RPL_WHOISEXTRA       320 /* catch-all extra WHOIS information reply - non-standard use of 320 -- mh 20200111 */
++#endif
++
++#ifdef SASL_WHOISLOGGEDIN
++#define RPL_WHOISLOGGEDIN    330
++#endif
++
++#ifdef SPOOF_WHOISCLOAKED
++#ifdef RPL_WHOISEXTRA
++#define RPL_WHOISCLOAKED     RPL_WHOISEXTRA
++#else
++#define RPL_WHOISCLOAKED     320 /* client is cloaked/spoofed - non-standard use of 320 -- mh 20191230 */
++#endif
++#endif
++
+ #define RPL_LISTSTART        321
+ #define RPL_LIST             322
+ #define RPL_LISTEND          323
+@@ -356,3 +372,11 @@
+ 
+ #define	RPL_ETRACEFULL       708
+ #define	RPL_ETRACEEND        759
++
++#define RPL_LOGGEDIN		 900
++#define RPL_SASLSUCCESS		 903
++#define ERR_SASLFAIL		 904
++#define ERR_SASLTOOLONG		 905
++#define ERR_SASLABORTED		 906
++#define ERR_SASLALREADY		 907
++#define RPL_SASLMECHS		 908
+\ No newline at end of file
+Index: ircd/s_service.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/ircd/s_service.c b/ircd/s_service.c
+--- a/ircd/s_service.c	(revision 8d524c1f0133df9686bfc30b7545a14bf4c56e54)
++++ b/ircd/s_service.c	(date 1696269853917)
+@@ -99,6 +99,25 @@
+ 			    }
+ 	return (acptr ? acptr : cptr);
+ }
++
++/*
++ * Finds the closest service that has the expected flags.
++ */
++aClient *best_service_with_flags(int flags) {
++    Reg aClient *acptr = NULL;
++    Reg aClient *bcptr;
++    Reg aService *sp;
++
++    for (sp = svctop; sp; sp = sp->nexts) {
++        if ((bcptr = sp->bcptr) && sp->type & flags) {
++            if (!acptr || bcptr->hopcount < acptr->hopcount) {
++                acptr = bcptr;
++            }
++        }
++    }
++
++    return acptr;
++}
+  
+ 
+ #ifdef	USE_SERVICES
+@@ -143,7 +162,7 @@
+ 				va_end(va);
+ 				if ((sp->wants & SERVICE_WANT_UID))
+ 					sendto_one(sp->bcptr, ":%s%s", 
+-						cptr->user ? cptr->user->uid :
++						cptr->user ? cptr->uid :
+ 						cptr->name, buf);
+ 				else
+ 					sendto_one(sp->bcptr, ":%s!%s@%s%s",
+@@ -177,10 +196,14 @@
+ 		sendto_one(cptr, ":%s UNICK %s %s %s %s %s %s :%s",
+ 			sptr->user->servp->sid,
+ 			(wants & SERVICE_WANT_NICK) ? sptr->name : ".",
+-			sptr->user->uid,
++			sptr->uid,
+ 			(wants & SERVICE_WANT_USER) ? sptr->user->username : ".",
+ 			(wants & SERVICE_WANT_USER) ? sptr->user->host : ".",
++#ifdef SPOOF
++			(wants & SERVICE_WANT_USER) ? get_client_ip(sptr) : ".",
++#else
+ 			(wants & SERVICE_WANT_USER) ? sptr->user->sip : ".",
++#endif
+ 			(wants & (SERVICE_WANT_UMODE|SERVICE_WANT_OPER)) ? umode : "+",
+ 			(wants & SERVICE_WANT_USER) ? sptr->info : "");
+ 	else
+@@ -708,7 +731,7 @@
+ 				   acptr->name, parv[2]);
+ 		else if (MyConnect(acptr) && 
+ 			(acptr->service->wants & SERVICE_WANT_UID))
+-			sendto_one(acptr, ":%s SQUERY %s :%s", sptr->user->uid,
++			sendto_one(acptr, ":%s SQUERY %s :%s", sptr->uid,
+ 				   acptr->name, parv[2]);
+ 		else
+ 			sendto_one(acptr, ":%s SQUERY %s :%s",
+Index: doc/INSTALL.sgml
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/doc/INSTALL.sgml b/doc/INSTALL.sgml
+--- a/doc/INSTALL.sgml	(revision 8d524c1f0133df9686bfc30b7545a14bf4c56e54)
++++ b/doc/INSTALL.sgml	(date 1696269853917)
+@@ -617,6 +617,7 @@
+ <item>M - disable resolved host name to be shown
+ <item>N - disable resolved host name to be used
+ <item>R - restricted
++<item>S - SASL authentication is required
+ </itemize>
+ <tag/Note/Restricted I: line means that
+ clients matching such I line will not be able to use their operator
+Index: common/patchlevel.h
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/common/patchlevel.h b/common/patchlevel.h
+--- a/common/patchlevel.h	(revision 8d524c1f0133df9686bfc30b7545a14bf4c56e54)
++++ b/common/patchlevel.h	(date 1696269853917)
+@@ -19,4 +19,9 @@
+ #ifndef	PATCHLEVEL
+ #define PATCHLEVEL "0211020003"		/* for server identification */
+ #define DEVLEVEL 'a'
++#define PASSWDLEN_VERSION "1.00"
++#define VERSIONLEN_VERSION "1.00"
++#define PASSOPTS_VERSION "1.01"
++#define SPOOF_VERSION "1.02"
++#define WHOISEXTRA_VERSION "1.00"
+ #endif
+Index: ircd/s_debug.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/ircd/s_debug.c b/ircd/s_debug.c
+--- a/ircd/s_debug.c	(revision 8d524c1f0133df9686bfc30b7545a14bf4c56e54)
++++ b/ircd/s_debug.c	(date 1696269853917)
+@@ -340,6 +340,57 @@
+ #ifdef CLIENTS_CHANNEL
+ 	sendto_one(cptr, ":%s %d %s :CCL:0x%X", ME, RPL_STATSDEFINE, nick,
+ 		CLIENTS_CHANNEL_LEVEL);
++#endif
++#ifdef SPOOF_STATSDEFINE
++	/* spoof defines
++	 *
++	 * -- mh 20200105
++	 *
++	 * Spoof:<version> S1:<welcome> SN:<notice> SW:<whois> SI:<identchar> PO:<passopts>
++	 *
++	 * version     SPOOF_VERSION string
++	 * welcome     2 if SPOOF_WELCOME_ALL is defined, 1 if SPOOF_WELCOME is defined, otherwise 0
++	 * notice      1 if SPOOF_NOTICE is defined, otherwise 0
++	 * whois       1 if SPOOF_WHOISCLOAKED is defined, otherwise 0
++	 * identchar   0 if SPOOF_IDENTCHAR is not defined, otherwise SPOOF_IDENTCHAR character singe-quoted
++	 * passopts    0 if PASSOPTS is not defined, otherwise PASSOPTS_VERSION string
++	 *
++	 */
++#ifdef SPOOF_IDENTCHAR
++	sendto_one(cptr, ":%s %d %s :Spoof:%s S1:%d SN:%d SW:%d SI:'%c' PO:%s", ME, RPL_STATSDEFINE, nick, SPOOF_VERSION,
++#else
++	sendto_one(cptr, ":%s %d %s :Spoof:%s S1:%d SN:%d SW:%d SI:%d PO:%s", ME, RPL_STATSDEFINE, nick, SPOOF_VERSION,
++#endif
++#ifdef SPOOF_WELCOME_ALL
++		2,
++#else
++#ifdef SPOOF_WELCOME
++		1,
++#else
++		0,
++#endif
++#endif
++#ifdef SPOOF_NOTICE
++		1,
++#else
++		0,
++#endif
++#ifdef SPOOF_WHOISCLOAKED
++		1,
++#else
++		0,
++#endif
++#ifdef SPOOF_IDENTCHAR
++		SPOOF_IDENTCHAR,
++#else
++		0,
++#endif
++#ifdef PASSOPTS
++		PASSOPTS_VERSION
++#else
++		"0"
++#endif
++	);
+ #endif
+ 	/* note that it's safe to check extend[1], it will at worst be null.
+ 	** if we ever need extend[2], check length first... --B. */
+Index: common/send.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/common/send.c b/common/send.c
+--- a/common/send.c	(revision 8d524c1f0133df9686bfc30b7545a14bf4c56e54)
++++ b/common/send.c	(date 1696269853917)
+@@ -340,12 +340,12 @@
+ {
+ 	memset(&ausr, 0, sizeof(anUser));
+ 	strcpy(ausr.username, "anonymous");
+-	strcpy(ausr.uid, "0ANONYM");
+ 	strcpy(ausr.host, "anonymous.");
+ 	ausr.server = "anonymous.";
+ 
+ 	memset(&anon, 0, sizeof(aClient));
+ 	anon.user = &ausr;
++	strcpy(anon.uid, "0ANONYM");
+ 	anon.from = &anon;
+ 	anon.fd = -2;
+ 	anon.status = STAT_CLIENT;
+Index: common/match.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/common/match.c b/common/match.c
+--- a/common/match.c	(revision 8d524c1f0133df9686bfc30b7545a14bf4c56e54)
++++ b/common/match.c	(date 1696269853917)
+@@ -334,7 +334,11 @@
+ 
+ 	ch = username;
+ 	if (*ch == '+' || *ch == '=' || *ch == '-' ||
++#ifdef SPOOF_IDENTCHAR
++		*ch == '^' || *ch == '~' || *ch == SPOOF_IDENTCHAR)
++#else
+ 		*ch == '^' || *ch == '~')
++#endif
+ 	{
+ 		/* do not allow them as first char */
+ 		return 0;
+Index: doc/INSTALL.info
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/doc/INSTALL.info b/doc/INSTALL.info
+--- a/doc/INSTALL.info	(revision 8d524c1f0133df9686bfc30b7545a14bf4c56e54)
++++ b/doc/INSTALL.info	(date 1696269853917)
+@@ -867,6 +867,8 @@
+ 
+         * R - restricted
+ 
++        * S - SASL authentication is required
++
+ `Note'
+      Restricted I: line means that clients matching such I line will
+      not be able to use their operator privileges (no nick/mode change,
+Index: common/struct_def.h
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/common/struct_def.h b/common/struct_def.h
+--- a/common/struct_def.h	(revision 8d524c1f0133df9686bfc30b7545a14bf4c56e54)
++++ b/common/struct_def.h	(date 1696269853917)
+@@ -52,7 +52,9 @@
+ #define	REALLEN	 	50
+ #define	TOPICLEN	255
+ #define	CHANNELLEN	50
++#ifndef PASSWDLEN
+ #define	PASSWDLEN 	20
++#endif
+ #define	KEYLEN		23
+ #define	BUFSIZE		512		/* WARNING: *DONT* CHANGE THIS!!!! */
+ #define	MAXRECIPIENTS 	20
+@@ -128,7 +130,7 @@
+  * status macros.
+  */
+ #define	IsRegisteredUser(x)	(((x)->status == STAT_CLIENT || \
+-				 (x)->status == STAT_OPER) && (x)->user)
++				 (x)->status == STAT_OPER) && (x)->user && !IsCAPNegotiation(x))
+ #define	IsRegistered(x)		((x)->status >= STAT_SERVER || \
+ 				 (x)->status == STAT_ME)
+ #define	IsConnecting(x)		((x)->status == STAT_CONNECTING)
+@@ -192,9 +194,17 @@
+ #define FLAGS_RESTRICT	0x0010 /* restricted user */
+ #define FLAGS_AWAY	0x0020 /* user is away */
+ #define FLAGS_EXEMPT    0x0040 /* user is exempted from k-lines */
++#ifdef SPOOF
++#define FLAGS_SPOOFED   0x0080 /* user is spoofed */
++#endif
+ #ifdef XLINE
+ #define FLAGS_XLINED	0x0100	/* X-lined client */
+ #endif
++#ifdef PASSOPTS
++#define FLAGS_REQPASS   0x0200 /* require the given password match an I-line password to connect -- mh 20200102 */
++#define POFLAG_REQPASS  0x01   /* passopts flag to require password to match and be present in I-line -- mh 20200111 */
++#endif
++#define FLAGS_SASL  	0x0400	/* user is authenticated via SASL */
+ #define	SEND_UMODES	(FLAGS_INVISIBLE|FLAGS_OPER|FLAGS_WALLOP|FLAGS_AWAY|FLAGS_RESTRICT)
+ #define	ALL_UMODES	(SEND_UMODES|FLAGS_LOCOP)
+ 
+@@ -263,7 +273,18 @@
+ #define SetXlined(x)		((x)->user->flags |= FLAGS_XLINED)
+ #define ClearXlined(x)		((x)->user->flags &= ~FLAGS_XLINED)
+ #endif
++#ifdef SPOOF
++#define IsSpoofed(x)        ((x)->user && (x)->user->flags & FLAGS_SPOOFED)
++#define SetSpoofed(x)       ((x)->user->flags |= FLAGS_SPOOFED)
++#endif
++#ifdef PASSOPTS
++#define IsReqPass(x)    ((x)->user && (x)->user->flags & FLAGS_REQPASS)
++#define SetReqPass(x)   ((x)->user->flags |= FLAGS_REQPASS)
++#endif
+ 
++#define IsCAPNegotiation(x)  (MyConnect(x) && (x)->cap_negotation)
++#define HasCap(x, y)         (MyConnect(x) && (x)->caps & y)
++#define IsSASLAuthed(x)		 ((x)->flags & FLAGS_SASL)
+ 
+ /*
+  * defined debugging levels
+@@ -375,6 +396,10 @@
+ #ifdef XLINE
+ #define CFLAG_XEXEMPT		0x00080
+ #endif
++#ifdef SPOOF
++#define CFLAG_SPOOFED       0x00200
++#endif
++#define CFLAG_REQUIRE_SASL  0x00100
+ 
+ #define IsConfRestricted(x)	((x)->flags & CFLAG_RESTRICTED)
+ #define IsConfRNoDNS(x)		((x)->flags & CFLAG_RNODNS)
+@@ -386,6 +411,10 @@
+ #ifdef XLINE
+ #define IsConfXlineExempt(x)	((x)->flags & CFLAG_XEXEMPT)
+ #endif
++#ifdef SPOOF
++#define IsConfSpoofed(x)        ((x)->flags & CFLAG_SPOOFED)
++#endif
++#define IsConfRequireSASL(x)	((x)->flags & CFLAG_REQUIRE_SASL)
+ 
+ #define PFLAG_DELAYED		0x00001
+ #define PFLAG_SERVERONLY	0x00002
+@@ -452,13 +481,11 @@
+ 				** introduced... --msa
+ 				** I think it's not true anymore --Beeth
+ 				*/
+-	u_int	hashv;
+-	aClient	*uhnext;
+ 	aClient	*bcptr;
+ 	char	username[USERLEN+1];
+-	char	uid[UIDLEN+1];
+ 	char	host[HOSTLEN+1];
+ 	char	*server;
++
+ 	u_int	hhashv;		/* hostname hash value */
+ 	u_int	iphashv;	/* IP hash value */
+ 	struct User *hhnext;	/* next entry in hostname hash */
+@@ -523,6 +550,10 @@
+ 	char	namebuf[NICKLEN+1]; /* nick of the client */
+ 	char	username[USERLEN+1]; /* username here now for auth stuff */
+ 	char	*info;		/* Free form additional client information */
++	char	uid[UIDLEN+1];
++	u_int	uidhashv;   /* raw hash value of UID */
++	aClient	*uhnext;
++	char *sasl_user; /* After successful login, the SASL user name will be stored here */
+ 	/*
+ 	** The following fields are allocated only for local clients
+ 	** (directly connected to *this* server with a socket.
+@@ -567,7 +598,13 @@
+ 	char	*user2;	/* 2nd param of USER */
+ 	char	*user3;	/* 3rd param of USER */
+ #endif
+-
++    int caps; /* Enabled capabilities */
++    int cap_negotation; /* CAP negotiation is in progress. Registration must wait for "CAP END" */
++    aClient *sasl_service; /* The SASL service that is responsible for this user. */
++    int sasl_auth_attempts; /* Number of SASL authentication attempts */
++#ifdef SPOOF
++    char *cloak_tmp; /* Contains the cloaked hostname until it was set by attach_Iline() */
++#endif
+ };
+ 
+ #define	CLIENT_LOCAL_SIZE sizeof(aClient)
+@@ -949,6 +986,7 @@
+ #define EXITC_MBUF	'M'	/* mem alloc error */
+ #define EXITC_PING	'P'	/* ping timeout */
+ #define EXITC_BADPASS	'p'	/* bad password */
++#define EXITC_SASL_REQUIRED	'S'	/* SASL authentication required */
+ #define EXITC_SENDQ	'Q'	/* send queue exceeded */
+ #define EXITC_REF	'R'	/* Refused */
+ #ifdef TKLINE
+@@ -1050,3 +1088,5 @@
+ #define CCL_NICK     0x10	/* nick changes */
+ #endif
+ 
++// Capability flags
++#define CAP_SASL        	0x0001
+Index: ircd/channel.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/ircd/channel.c b/ircd/channel.c
+--- a/ircd/channel.c	(revision 8d524c1f0133df9686bfc30b7545a14bf4c56e54)
++++ b/ircd/channel.c	(date 1696269853917)
+@@ -320,7 +320,7 @@
+ 				{
+ 					/* ...perhaps it is UID-ban? */
+ 					if (match(tmp->value.alist->nick, 
+-						cptr->user->uid) != 0)
++						cptr->uid) != 0)
+ 					{
+ 						/* no match on UID */
+ 						continue;
+@@ -998,7 +998,7 @@
+ 	for (lp = chptr->members; lp; lp = lp->next)
+ 	    {
+ 		c2ptr = lp->value.cptr;
+-		p = c2ptr->user ? c2ptr->user->uid : c2ptr->name;
++		p = c2ptr->user ? c2ptr->uid : c2ptr->name;
+ 		nlen = strlen(p);
+ 		if ((len + nlen) > (size_t) (BUFSIZE - 9)) /* ,@+ \r\n\0 */
+ 		    {
+@@ -1700,19 +1700,19 @@
+ 				c = 'o';
+ 				cp = lp->value.cptr->name;
+ 				ucp = lp->value.cptr->user ?
+-					lp->value.cptr->user->uid : cp;
++					lp->value.cptr->uid : cp;
+ 				break;
+ 			case MODE_UNIQOP :
+ 				c = 'O';
+ 				cp = lp->value.cptr->name;
+ 				ucp = lp->value.cptr->user ?
+-					lp->value.cptr->user->uid : cp;
++					lp->value.cptr->uid : cp;
+ 				break;
+ 			case MODE_VOICE :
+ 				c = 'v';
+ 				cp = lp->value.cptr->name;
+ 				ucp = lp->value.cptr->user ?
+-					lp->value.cptr->user->uid : cp;
++					lp->value.cptr->uid : cp;
+ 				break;
+ 			case MODE_BAN :
+ 			case MODE_EXCEPTION :
+@@ -1954,7 +1954,7 @@
+ 		}
+ 		else if (sptr->user)
+ 		{
+-			s = sptr->user->uid;
++			s = sptr->uid;
+ 		}
+ 		else
+ 		{
+@@ -2351,7 +2351,7 @@
+ 				remove_user_from_channel(sptr, chptr);
+ 			}
+ 			sendto_match_servs(NULL, cptr, ":%s JOIN 0 :%s",
+-				sptr->user->uid, key ? key : parv[0]);
++				sptr->uid, key ? key : parv[0]);
+ 		}
+ 		else
+ 		{
+@@ -2508,7 +2508,7 @@
+ 				remove_user_from_channel(sptr, chptr);
+ 			}
+ 			sendto_match_servs(NULL, cptr, ":%s JOIN 0 :%s",
+-				sptr->user->uid, key ? key : parv[0]);
++				sptr->uid, key ? key : parv[0]);
+ 			continue;
+ 		}
+ 
+@@ -2623,7 +2623,7 @@
+ 				":%s NJOIN %s :%s%s", me.serv->sid, name,
+ 				flags & CHFL_UNIQOP ? "@@" : 
+ 				flags & CHFL_CHANOP ? "@" : "",
+-				sptr->user ? sptr->user->uid : parv[0]);
++				sptr->user ? sptr->uid : parv[0]);
+ 		}
+ 		else if (*chptr->chname != '&')
+ 		{
+@@ -2631,7 +2631,7 @@
+ 				me.serv->sid, name,
+ 				flags & CHFL_UNIQOP ? "@@" : 
+ 				flags & CHFL_CHANOP ? "@" : "",
+-				sptr->user ? sptr->user->uid : parv[0]);
++				sptr->user ? sptr->uid : parv[0]);
+ 		}
+ 	}
+ 	return 2;
+@@ -2807,7 +2807,7 @@
+ 			*u++ = *target;
+ 		}
+ 
+-		target = acptr->user ? acptr->user->uid : acptr->name;
++		target = acptr->user ? acptr->uid : acptr->name;
+ 		while (*target)
+ 		{
+ 			*u++ = *target++;
+@@ -2968,7 +2968,7 @@
+ 					/* Anyway, if it would not fit in the
+ 					** buffer, send it right away. --B */
+ 					sendto_serv_butone(cptr, PartFmt,
+-						sptr->user->uid, buf, comment);
++						sptr->uid, buf, comment);
+ 					*buf = '\0';
+ 				}
+ 				if (*buf)
+@@ -2978,13 +2978,13 @@
+ 		}
+ 		else
+ 			sendto_match_servs(chptr, cptr, PartFmt,
+-				   	   sptr->user->uid, name, comment);
++				   	   sptr->uid, name, comment);
+ 		sendto_channel_butserv(chptr, sptr, PartFmt,
+ 				       parv[0], chptr->chname, comment);
+ 		remove_user_from_channel(sptr, chptr);
+ 	}
+ 	if (*buf)
+-		sendto_serv_butone(cptr, PartFmt, sptr->user->uid, buf, comment);
++		sendto_serv_butone(cptr, PartFmt, sptr->uid, buf, comment);
+ 	return 4;
+ }
+ 
+@@ -3026,7 +3026,7 @@
+ 	}
+ 	else if (sptr->user)
+ 	{
+-		sender = sptr->user->uid;
++		sender = sptr->uid;
+ 	}
+ 	else
+ 	{
+@@ -3104,7 +3104,7 @@
+ 				{
+ 					strcat(nbuf, ",");
+ 				}
+-				strcat(nbuf, who->user ? who->user->uid :
++				strcat(nbuf, who->user ? who->uid :
+ 					who->name);
+ 
+ 				/* kicking last one out may destroy chptr */
+@@ -3230,7 +3230,7 @@
+ 			chptr->topic_t = timeofday;
+ #endif
+ 			sendto_match_servs(chptr, cptr,":%s TOPIC %s :%s",
+-					   sptr->user->uid, chptr->chname,
++					   sptr->uid, chptr->chname,
+ 					   chptr->topic);
+ 			sendto_channel_butserv(chptr, sptr, ":%s TOPIC %s :%s",
+ 					       parv[0],
+Index: ircd/s_serv.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/ircd/s_serv.c b/ircd/s_serv.c
+--- a/ircd/s_serv.c	(revision 8d524c1f0133df9686bfc30b7545a14bf4c56e54)
++++ b/ircd/s_serv.c	(date 1696269853917)
+@@ -1261,10 +1261,14 @@
+ 			sendto_one(cptr,
+ 					   ":%s UNICK %s %s %s %s %s %s :%s",
+ 					   acptr->user->servp->sid,
+-					   acptr->name, acptr->user->uid,
++					   acptr->name, acptr->uid,
+ 					   acptr->user->username,
+ 					   acptr->user->host,
++#ifdef SPOOF
++					   get_client_ip(acptr),
++#else
+ 					   acptr->user->sip,
++#endif
+ 					   (*buf) ? buf : "+", acptr->info);
+ 		    }
+ 		else if (IsService(acptr) &&
+@@ -1783,6 +1787,10 @@
+ #endif
+ 			else if ((tmp->status & CONF_CLIENT))
+ 			{
++#ifdef SPOOF
++				if(IsConfSpoofed(tmp))
++					continue;
++#endif
+ 				sendto_one(sptr, replies[p[1]], ME, BadTo(to),
+ 					   c, host, (pass) ? "*" : null,
+ 					   name, port, get_conf_class(tmp),
+@@ -2857,7 +2865,11 @@
+ 				IsAnOper(acptr) ? "Oper" : "User",
+ 				get_client_class(acptr),
+ 				acptr->name, acptr->user->username,
++#ifdef SPOOF
++				acptr->user->host, get_client_ip(acptr),
++#else
+ 				acptr->user->host, acptr->user->sip,
++#endif
+ #ifdef XLINE
+ 				acptr->user2, acptr->user3, 
+ #else
+@@ -2880,7 +2892,11 @@
+ 				IsAnOper(acptr) ? "Oper" : "User", 
+ 				get_client_class(acptr), 
+ 				acptr->name, acptr->user->username, 
++#ifdef SPOOF
++				acptr->user->host, get_client_ip(acptr),
++#else
+ 				acptr->user->host, acptr->user->sip,
++#endif
+ #ifdef XLINE
+ 				acptr->user2, acptr->user3, 
+ #else
+@@ -2908,7 +2924,7 @@
+ 		if (!IsPerson(acptr))
+ 			continue;
+ 
+-		if (strncmp(acptr->user->uid, me.serv->sid, SIDLEN-1))
++		if (strncmp(acptr->uid, me.serv->sid, SIDLEN-1))
+ 			continue;
+ 
+ 		sendto_one(sptr, replies[RPL_ETRACEFULL],
+@@ -2916,7 +2932,11 @@
+ 			IsAnOper(acptr) ? "Oper" : "User", 
+ 			MyClient(acptr) ? get_client_class(acptr) : -1, 
+ 			acptr->name, acptr->user->username,
++#ifdef SPOOF
++			cptr->user->host, get_client_ip(acptr),
++#else
+ 			acptr->user->host, acptr->user->sip, 
++#endif
+ #ifdef XLINE
+ 			MyClient(acptr) ? acptr->user2 : "-",
+ 			MyClient(acptr) ? acptr->user3 : "-",
+@@ -3838,46 +3858,113 @@
+ 	}
+ }
+ 
++/* Passing to parse() everything would be too dangerous
++ * as not all commands expect remote users.
++ * Because only small amount of commands are likely candidates for encap,
++ * we use whitelist approach, instead of adding flag field to handlers.
++ */
++static	char *encap_whitelisted(char *cmd)
++{
++	char *whitelist[] = {
++        "SASL",
++		NULL
++	};
++    int i;
++
++	for (i = 0; whitelist[i]; i++)
++		if (!strcasecmp(cmd, whitelist[i]))
++			return whitelist[i];
++
++	return NULL;
++}
++
+ /*
+ ** allows ENCAPsulation of commands
+ ** parv[0] is ignored (though it's source)
+ ** parv[1] is target mask
+ ** parv[2] is command
+-** the rest is optional and is used by command as its own params
++** parv[3] is args
+ */
+-
+ int	m_encap(aClient *cptr, aClient *sptr, int parc, char *parv[])
+ {
+ 	char buf[BUFSIZE];
+-	int i, len;
++	char *mask, *whitelisted;
++	char *toparse, *p;
++	int i, len, matched;
+ 
+-	/* Prepare ENCAP buffer... */
+-	len = sprintf(buf, ":%s ENCAP", sptr->serv->sid);
+-	for (i = 1; i < parc; i++)
+-	{
+-		if (len + strlen(parv[i]) >= BUFSIZE-2)
+-		{
+-			/* This can get cut. */
+-			sendto_flag(SCH_ERROR, "ENCAP too long (%s)", buf);
+-			/* Sending incomplete ENCAP means data corruption.
+-			** Should we squit the link that fed us this? --B. */
+-			return 1;
+-		}
+-		if (i >= 3 && i == parc - 1)
+-			len += sprintf(buf+len, " :%s", parv[i]);
+-		else
+-			len += sprintf(buf+len, " %s", parv[i]);
+-	}
+-	/* ...and broadcast it. */
+-	sendto_serv_v(cptr, SV_UID, "%s", buf);
+-
+-	/* FIXME: in 2.11.1 */
+-	/* Do we match parv[1]? */
+-	/* Copying things from parse() */
+-	/* STAT_ENCAP handler for parv[2] */
+-	/* Call handler function with parc-2, parv+2 */
+-
+-	return 0;
++	mask = parv[1];
++	if (IsServer(cptr)) {
++		/* Prepare ENCAP buffer... */
++		len = sprintf(buf, ":%s ENCAP", sptr->serv->sid);
++		for (i = 1; i < parc; i++)
++		{
++			if (len + strlen(parv[i]) >= BUFSIZE-2)
++			{
++				/* This can get cut. */
++				sendto_flag(SCH_ERROR, "ENCAP too long (%s)", buf);
++				/* Sending incomplete ENCAP means data corruption.
++				** Should we squit the link that fed us this? --B. */
++				return 1;
++			}
++			if (i == 3) toparse = buf + len;
++			if (i >= 3 && i == parc - 1)
++				len += sprintf(buf+len, " :%s", parv[i]);
++			else
++				len += sprintf(buf+len, " %s", parv[i]);
++		}
++		Debug((DEBUG_SEND,"m_encap(serv->serv): %s", buf));
++		/* ...and broadcast it, if the message is not (only) for me. */
++		if(strcmp(mask, me.name) && strcmp(mask, me.serv->sid)) {
++            sendto_serv_v(cptr, SV_UID, "%s", buf);
++        }
++		/* Nothing of real interest here .. */
++		if (parc < 5 || strcmp(parv[2], "PARSE") || !encap_whitelisted(parv[4]))
++			return 0;
++	} else if (MyService(cptr)) {
++		/* Check that the command is whitelisted */
++		whitelisted = encap_whitelisted(parv[2]);
++		if (!whitelisted) {
++			sendto_one(sptr, ":%s %d %s %s :Unknown command",
++				me.name, ERR_UNKNOWNCOMMAND, sptr->name, parv[2]);
++			return 1;
++		}
++
++		/* Resulting format: ":SID ENCAP *.mask sender!u@h COMMAND ..." */
++		len = sprintf(buf, ":%s ENCAP %s PARSE", me.serv->sid, mask);
++		toparse = buf + len;
++		len += sprintf(buf + len, " %s %s", sptr->name, whitelisted);
++		for (i = 3; i < parc; i++)
++			len += sprintf(buf + len, " %s%s", i+1 == parc?":":"", parv[i]);
++		Debug((DEBUG_SEND,"m_encap(cli->serv): %s", buf));
++        if(strcmp(mask, me.name) && strcmp(mask, me.serv->sid)) {
++            sendto_serv_v(cptr, SV_UID, "%s", buf);
++        }
++	}
++	else
++    {
++	    return 0;
++    }
++
++	/* Target is either FQDN mask, such as *.cz or SID, like 0PN* */
++	if ((strchr(mask, '.') && match(mask, me.name) == 0) || match(mask, me.serv->sid) == 0) {
++		/* create prefix */
++		toparse[0] = ':';
++
++		/* We might end up with :prefix :COMMAND here, sigh .. */
++		p = strchr(toparse, ' ');
++
++		if(p == NULL)
++		    return 2;
++
++		if (p[1] == ':') p[1] = ' ';
++
++		/* toparse now contains: :sendername COMMAND ... :lastarg.
++		 * invariant: parse() ignores :sendername if cptr is client
++		 */
++		Debug((DEBUG_DEBUG,"m_encap(PARSE): %s", toparse));
++		parse(cptr, toparse, toparse + strlen(toparse)); /* Inception .. */
++	}
++	return 5;
+ }
+ 
+ /* announces server DIE */
+Index: ircd/hash.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/ircd/hash.c b/ircd/hash.c
+--- a/ircd/hash.c	(revision 8d524c1f0133df9686bfc30b7545a14bf4c56e54)
++++ b/ircd/hash.c	(date 1696269853917)
+@@ -455,10 +455,10 @@
+ 		uidTable = table;
+ 		for (cptr = client; cptr; cptr = cptr->next)
+ 			if (cptr->user)
+-				cptr->user->uhnext = NULL;
++				cptr->uhnext = NULL;
+ 		for (cptr = client; cptr; cptr = cptr->next)
+-			if (cptr->user && cptr->user->uid[0])
+-				add_to_uid_hash_table(cptr->user->uid, cptr);
++			if (cptr->user && cptr->uid[0])
++				add_to_uid_hash_table(cptr->uid, cptr);
+ 		MyFree(otab);
+ 	    }
+ #ifdef USE_HOSTHASH
+@@ -564,8 +564,8 @@
+ {
+ 	Reg	u_int	hashv;
+ 
+-	hashv = hash_uid(uid, &cptr->user->hashv);
+-	cptr->user->uhnext = (aClient *)uidTable[hashv].list;
++	hashv = hash_uid(uid, &cptr->uidhashv);
++	cptr->uhnext = (aClient *)uidTable[hashv].list;
+ 	uidTable[hashv].list = (void *)cptr;
+ 	uidTable[hashv].links++;
+ 	uidTable[hashv].hits++;
+@@ -704,18 +704,18 @@
+ 	Reg	aClient	*tmp, *prev = NULL;
+ 	Reg	u_int	hashv;
+ 
+-	hashv = cptr->user->hashv;
++	hashv = cptr->uidhashv;
+ 	hashv %= _UIDSIZE;
+ 	for (tmp = (aClient *)uidTable[hashv].list; tmp;
+-	     tmp = tmp->user->uhnext)
++	     tmp = tmp->uhnext)
+ 	    {
+ 		if (tmp == cptr)
+ 		    {
+ 			if (prev)
+-				prev->user->uhnext = tmp->user->uhnext;
++				prev->uhnext = tmp->uhnext;
+ 			else
+-				uidTable[hashv].list=(void *)tmp->user->uhnext;
+-			tmp->user->uhnext = NULL;
++				uidTable[hashv].list=(void *)tmp->uhnext;
++			tmp->uhnext = NULL;
+ 			if (uidTable[hashv].links > 0)
+ 			    {
+ 				uidTable[hashv].links--;
+@@ -977,9 +977,9 @@
+ 	 * Got the bucket, now search the chain.
+ 	 */
+ 	for (tmp = (aClient *)tmp3->list; tmp;
+-	     prv = tmp, tmp = tmp->user->uhnext)
++	     prv = tmp, tmp = tmp->uhnext)
+ 	{
+-		if (hv == tmp->user->hashv && mycmp(uid, tmp->user->uid) == 0)
++		if (hv == tmp->uidhashv && mycmp(uid, tmp->uid) == 0)
+ 		    {
+ 			uidhits++;
+ 			/*
+@@ -998,8 +998,8 @@
+ 
+ 				tmp2 = (aClient *)tmp3->list;
+ 				tmp3->list = (void *)tmp;
+-				prv->user->uhnext = tmp->user->uhnext;
+-				tmp->user->uhnext = tmp2;
++				prv->uhnext = tmp->uhnext;
++				tmp->uhnext = tmp2;
+ 			    }
+ #endif
+ 			return (tmp);
+@@ -1323,10 +1323,10 @@
+ 		{
+ 			sendto_one(sptr,
+ 			 	":%s NOTICE %s :Bucket %d entry %d - %s (%s)",
+-			 	ME, sptr->name, bucket, j, acptr->user->uid,
++			 	ME, sptr->name, bucket, j, acptr->uid,
+ 			 	acptr->name);
+ 			j++;
+-			acptr = acptr->user->uhnext;
++			acptr = acptr->uhnext;
+ 		}
+ 	}
+ 	else if (htab == channelTable)
+Index: ircd/s_send.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/ircd/s_send.c b/ircd/s_send.c
+--- a/ircd/s_send.c	(revision 8d524c1f0133df9686bfc30b7545a14bf4c56e54)
++++ b/ircd/s_send.c	(date 1696269853917)
+@@ -117,15 +117,15 @@
+ 	{
+ 		return;
+ 	}
+-	if (IsRegisteredUser(orig) && orig->user->uid[0])
++	if (IsRegisteredUser(orig) && orig->uid[0])
+ 	{
+-		oname = orig->user->uid;
++		oname = orig->uid;
+ 	}
+ 	if (dname == NULL)
+ 	{
+-		if (IsRegisteredUser(dest) && dest->user->uid[0])
++		if (IsRegisteredUser(dest) && dest->uid[0])
+ 		{
+-			dname = dest->user->uid;
++			dname = dest->uid;
+ 		}
+ 		else if (oname)
+ 		{
+Index: doc/INSTALL.txt
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/doc/INSTALL.txt b/doc/INSTALL.txt
+--- a/doc/INSTALL.txt	(revision 8d524c1f0133df9686bfc30b7545a14bf4c56e54)
++++ b/doc/INSTALL.txt	(date 1696269853917)
+@@ -759,6 +759,8 @@
+ 
+         +o  R - restricted
+ 
++        +o  S - SASL authentication is required
++
+      NNoottee
+         Restricted I: line means that clients matching such I line will
+         not be able to use their operator privileges (no nick/mode
+Index: ircd/list.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/ircd/list.c b/ircd/list.c
+--- a/ircd/list.c	(revision 8d524c1f0133df9686bfc30b7545a14bf4c56e54)
++++ b/ircd/list.c	(date 1696269853917)
+@@ -118,6 +118,9 @@
+ 	cptr->hnext = NULL;
+ 	cptr->user = NULL;
+ 	cptr->serv = NULL;
++	cptr->uid[0] = '\0';
++    cptr->uhnext = NULL;
++	cptr->sasl_user = NULL;
+ 	cptr->name = cptr->namebuf;
+ 	cptr->status = STAT_UNKNOWN;
+ 	cptr->fd = -1;
+@@ -140,6 +143,13 @@
+ 		cptr->user2 = NULL;
+ 		cptr->user3 = NULL;
+ #endif
++        cptr->cap_negotation = 0;
++        cptr->caps = 0;
++        cptr->sasl_service = NULL;
++        cptr->sasl_auth_attempts = 0;
++#ifdef SPOOF
++        cptr->cloak_tmp = NULL;
++#endif
+ 	    }
+ 	return (cptr);
+ }
+@@ -148,6 +158,7 @@
+ {
+ 	if (cptr->info != DefInfo)
+ 		MyFree(cptr->info);
++
+ 	/* True only for local clients */
+ 	if (cptr->hopcount == 0 || (IsServer(cptr) && cptr->hopcount == 1))
+ 	{
+@@ -164,12 +175,22 @@
+ 		{
+ 			MyFree(cptr->reason);
+ 		}
++#ifdef SPOOF
++        if(cptr->cloak_tmp)
++        {
++            MyFree(cptr->cloak_tmp);
++        }
++#endif
+ #ifdef XLINE
+ 		if (cptr->user2)
+ 			MyFree(cptr->user2);
+ 		if (cptr->user3)
+ 			MyFree(cptr->user3);
+ #endif
++		if(cptr->sasl_user)
++		{
++			MyFree(cptr->sasl_user);
++		}
+ 	}
+ 	MyFree(cptr);
+ }
+@@ -200,11 +221,9 @@
+ 		user->invited = NULL;
+ 		user->uwas = NULL;
+ 		cptr->user = user;
+-		user->hashv = 0;
+-		user->uhnext = NULL;
+-		user->uid[0] = '\0';
+ 		user->servp = NULL;
+ 		user->bcptr = cptr;
++
+ 		if (cptr->next)	/* the only cptr->next == NULL is me */
+ 			istat.is_users++;
+ 	    }
+Index: ircd/s_externs.h
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/ircd/s_externs.h b/ircd/s_externs.h
+--- a/ircd/s_externs.h	(revision 8d524c1f0133df9686bfc30b7545a14bf4c56e54)
++++ b/ircd/s_externs.h	(date 1696269853917)
+@@ -52,4 +52,5 @@
+ #include "support_ext.h"
+ #include "version_ext.h"
+ #include "whowas_ext.h"
++#include "s_sasl_ext.h"
+ #include "patricia_ext.h"
+Index: ircd/s_bsd.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/ircd/s_bsd.c b/ircd/s_bsd.c
+--- a/ircd/s_bsd.c	(revision 8d524c1f0133df9686bfc30b7545a14bf4c56e54)
++++ b/ircd/s_bsd.c	(date 1696269853917)
+@@ -2693,7 +2693,7 @@
+ 		(void)strcpy(cptr->serv->by, by->name);
+ 		if (by->user)
+ 		{
+-			strcpy(cptr->serv->byuid, by->user->uid);
++			strcpy(cptr->serv->byuid, by->uid);
+ 		}
+ 		cptr->serv->user = by->user;
+ 		by->user->refcnt++;
+Index: irc2.11.2p3.spoof/doc/spoof.txt
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/irc2.11.2p3.spoof/doc/spoof.txt b/irc2.11.2p3.spoof/doc/spoof.txt
+new file mode 100644
+--- /dev/null	(date 1696269853917)
++++ b/irc2.11.2p3.spoof/doc/spoof.txt	(date 1696269853917)
+@@ -0,0 +1,117 @@
++######################################################################
++
++spoof - host spoofs/IP cloaks for irc2.11.2p3
++
++######################################################################
++
++I-line extended with an optional field for a spoofed hostname:
++
++ I:<TARGET Host Addr>:<Password>:<TARGET Hosts NAME>:<Port>:<Class>
++ :<Flags>:<Spoofed Host Name>:
++
++the real hostname is replaced with the spoofed hostname, the real IP
++address is replaced by 255.255.255.255 (SPOOF_IP), and the username
++is prefixed with '_' (SPOOF_IDENTCHAR)
++
++I-lines with spoofed host names are hidden from STATS I
++
++channel modes will match the real IP address
++
++spoofed hostnames can be (T)K-Lined directly
++
++config.h defines:
++
++ SPOOF (enabled by default)
++  enable/disable the spoof feature
++
++ SPOOF_NOTICE (enabled by default)
++  show a notice to spoofed clients on connect
++
++ SPOOF_WHOISCLOAKED (enabled by default)
++  show in (local) whois if a client is spoofed
++
++ SPOOF_STATSDEFINE (enabled by default)
++  show spoof-related defines in STATS d
++
++ SPOOF_WELCOME (disabled by default)
++  only show nickname for spoofed clients in RPL_WELCOME
++
++ SPOOF_WELCOME_ALL (disabled by default)
++  only show nickname for all clients in RPL_WELCOME
++
++ SPOOF_IP ("255.255.255.255" by default)
++  what to show instead of the real IP address of spoofed clients
++
++ SPOOF_IDENTCHAR ('_' by default)
++  which  character to prefix usernames with
++
++patches included:
++
++ passopts   v1.01 extended PASS options (see doc/passopts.txt)
++ passwdlen  v1.00 PASSWDLEN define (see doc/passwdlen.txt)
++ versionlen v1.00 VERSIONLEN define (see doc/versionlen.txt)
++ whoisextra v1.00 RPL_WHOISEXTRA numeric 320 (see doc/whoisextra.txt)
++
++######################################################################
++
++changelog:
++
++ v1.02
++
++ 2020-01-27 -- mh
++
++  * ircd/s_serv.c:m_sidtrace(): minor cleanup
++
++  * ircd/s_user.c:register_user() fixed bug that caused ip to show up
++    in realname due to not cleaning up after me :( -- mh (reported by
++    patrick)
++
++ v1.01
++
++ 2020-01-17 -- mh
++
++  * included patch versionlen v1.00 to replace hardcoded value
++
++  * POOF_PASSWDLEN extracted to its own patch passwdlen v1.00 and
++    included it
++
++ 2020-01-12 -- mh
++
++  * SPOOF_WELCOME and SPOOF_WELCOME_ALL config.h defines added. both
++    disabled by default. some clients will try to get their local
++    address by parsing the hostname in RPL_WELCOME. this will remove
++    the user@host part from RPL_WELCOME reply on connect for spoofed
++    clients (SPOOF_WELCOME), or for all clients (SPOOF_WELCOME_ALL),
++    and only show the nickname. the latter can be defined without
++    SPOOF defined and will override the former if that is defined.
++    the former can only be defined with SPOOF defined. added to STATS
++    d as S1.
++
++  * SPOOF_IP config.h define added. the IP address shown instead of
++    the real one (for example in /STATS L) for spoofed clients. this
++    defaults to "255.255.255.255".
++
++  * SPOOF_IDENTCHAR config.h define added. you can now define a
++    different character than the default '_' or disable using an
++    ident character entirely. it can be defined without SPOOF defined
++    to block using the character without supporting spoofs. added to
++    STATS d as SI
++
++ 2020-01-11 -- mh
++
++  * included patch whoisextra v1.00
++
++  * RPL_WHOISCLOAKED will use RPL_WHOISEXTRA if it is defined or fall
++    back to 320
++
++  * SPOOF_WHOISCLOAKED message changed to be more in line with the
++    320 used for SSL connections on eu.irc6.net
++
++  * PASSOPTS extracted to its own patch passopts v1.01 and included
++    it
++
++  * initial version based on passopts v1 (po+spoof) which is in turn
++    based on the ircd spoof patch by patrick at ircnet.com:
++    https://github.com/ircnet-com/misc/tree/master/ircd-spoof-patch
++
++######################################################################
+Index: support/config.h.dist
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/support/config.h.dist b/support/config.h.dist
+--- a/support/config.h.dist	(revision 8d524c1f0133df9686bfc30b7545a14bf4c56e54)
++++ b/support/config.h.dist	(date 1696269853917)
+@@ -17,6 +17,154 @@
+  *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+  */
+ 
++/************************************************************************
++ *
++ * whoisextra (see doc/whoisextra)
++ *
++ * WHOISEXTRA
++ *  undefine to disable RPL_WHOISEXTRA numeric 320 WHOIS catch-all reply
++ *
++ *  (non-standard use of numeric 320)
++ *
++ */
++
++#define WHOISEXTRA
++
++
++/************************************************************************
++ *
++ * spoof (see doc/spoof.txt)
++ *
++ * SPOOF
++ *
++ *  undef to disable spoofs in I-lines.
++ *
++ * SPOOF_IDENTCHAR
++ *
++ *  undef to disable using spoof ident character, or define it to the
++ *  character you want to use.
++ *
++ *  you may want to leave this defined even without SPOOF defined if
++ *  other servers on the network use spoofs with ident character.
++ *
++ * SPOOF_WELCOME_ALL
++ *
++ *  define to only show nickname in RPL_WELCOME reply on connect for all
++ *  clients. this overrides SPOOF_WELCOME and extends the feature to all
++ *  clients.
++ *
++ * SPOOF_WELCOME
++ *
++ *  (only available when SPOOF is defined)
++ *
++ *  define to only show nickname in RPL_WELCOME reply on connect for
++ *  spoofed clients, otherwise nickname!user@host is shown with spoofed
++ *  address.
++ *
++ *  (https://modern.ircdocs.horse/#rplwelcome-001 some clients might try
++ *   to get their local address by parsing the hostname in RPL_WELCOME).
++ *
++ * SPOOF_NOTICE
++ *
++ *  (only available when SPOOF is defined)
++ *
++ *  undef to disable sending a notice to clients connecting if they are
++ *  spoofed, or define to the message you want to send
++ *
++ * SPOOF_WHOISCLOAKED
++ *
++ *  (only available when SPOOF is defined)
++ *
++ *  undef to disable sending a RPL_WHOISCLOAKED in /WHOIS reply for
++ *  spoofed (local) clients, or define to the message you want to show
++ *  for them
++ *
++ *  (will define to RPL_WHOISEXTRA if available, otherwise non-standard
++ *  use of numeric 320).
++ *
++ * SPOOF_STATSDEFINE
++ *
++ *  (only available when SPOOF is defined)
++ *
++ *  undef to disable showing spoof related defines in /STATS d.
++ *
++ *  (currently only documented in source: ircd/s_debug.c).
++ *
++ * SPOOF_IP
++ *
++ *  (only available when SPOOF is defined)
++ *
++ *  the IP address shown instead of the real one (for example in /STATS
++ *  L) for spoofed clients. this is a required define.
++ *
++ */
++
++#define SPOOF
++#define SPOOF_IDENTCHAR    '_'
++/* #define SPOOF_WELCOME_ALL */
++
++#ifdef SPOOF
++/* #define SPOOF_WELCOME */
++#define SPOOF_NOTICE       "Due to an administrative decision, your connection is cloaked."
++#define SPOOF_WHOISCLOAKED "is a Cloaked Connection (Spoof)"
++#define SPOOF_STATSDEFINE
++#define SPOOF_IP           "255.255.255.255"
++#endif
++
++/************************************************************************
++ *
++ * SASL (see doc/sasl.md)
++ *
++ * SASL_WHOISLOGGEDIN
++ *
++ *  (only available when SPOOF is defined)
++ *
++ *  Define to enable sending a RPL_WHOISLOGGEDIN in /WHOIS reply for
++ *  spoofed (local) clients
++ */
++#ifdef SPOOF
++#undef SASL_WHOISLOGGEDIN
++#endif
++
++/************************************************************************
++ *
++ * passopts (see doc/passopts.txt)
++ *
++ * PASSOPTS
++ *
++ *  undefine to disable support for extended PASS options v1
++ *
++ */
++
++#define PASSOPTS
++
++
++/************************************************************************
++ *
++ * versionlen (see doc/versionlen.txt)
++ *
++ * VERSIONLEN will override the default ircd version string length limit
++ * if defined
++ *
++ */
++
++#define VERSIONLEN 32
++
++
++/************************************************************************
++ *
++ * passwdlen (see doc/passwdlen.txt)
++ *
++ * PASSWDLEN
++ *
++ *  undefine to use ircs old default PASSWDLEN value, or define it to
++ *  the desired password length
++ *
++ */
++
++#define PASSWDLEN 128
++
++
+ /*
+  *  ircdwatch configuration options.
+  */
+@@ -112,6 +260,22 @@
+  * for opers and services.
+  */
+ #define TKLINE
++
++/*
++ * Enable remote TKLINE/UNTKLINE usage via ENCAP.
++ * Example usage to issue tkline on remote mask of servers:
++ * /quote encap *.cz tkline 1 *@*.sk :abusive botnet
++ * This works across unpatched servers.
++ */
++
++#define TKLINE_REMOTE
++
++
++/*
++ * Define this if you want to have TKLINE and UNTKLINE commands
++ * for opers and services.
++ */
++#define TKLINE
+ 
+ /* If you want tklines to be limited in time, define this (seconds). */
+ /* #define TKLINE_MAXTIME 86400 */
+@@ -788,11 +952,36 @@
+ #define SPLIT_USERS	50000
+ #define SPLIT_SERVERS	50
+ 
++/*
++ ** Maximum SASL authentication attempts until the user gets disconnected.
++ */
++#define MAX_SASL_AUTH_ATTEMPTS 3
++
+ /*   STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP  */
+ /*   STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP  */
+ /*   STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP STOP  */
+ /* ------------------------- END CONFIGURATION SECTION -------------------- */
+ 
++#ifdef SPOOF
++/* we require these if SPOOF is defined */
++#ifndef SPOOF_IP
++#define SPOOF_IP "255.255.255.255"
++#endif
++/* SPOOF_WELCOME_ALL overrrides SPOOF_WELCOME */
++#ifdef SPOOF_WELCOME
++#ifdef SPOOF_WELCOME_ALL
++#undef SPOOF_WELCOME
++#endif
++#endif
++#else
++/* we dont want these if SPOOF is not defined */
++#undef SPOOF_WELCOME
++#undef SPOOF_NOTICE
++#undef SPOOF_WHOISCLOAKED
++#undef SPOOF_STATSDEFINE
++#undef SPOOF_IP
++#endif
++
+ #ifndef ENABLE_SUMMON
+ #  undef LEAST_IDLE
+ #endif
+Index: ircd/service_def.h
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/ircd/service_def.h b/ircd/service_def.h
+--- a/ircd/service_def.h	(revision 8d524c1f0133df9686bfc30b7545a14bf4c56e54)
++++ b/ircd/service_def.h	(date 1696269853917)
+@@ -31,11 +31,13 @@
+ 
+ #define	SERVICE_WANT_TKLINE	0x00100000 /* service wants to TKLINE */
+ #define	SERVICE_WANT_KLINE	0x00200000 /* service wants to KLINE */
++#define	SERVICE_WANT_ENCAP	0x00400000 /* service wants to ENCAP */
++#define SERVICE_WANT_SASL   0x00800000 /* service wants SASL requests */
+ 
+ /* masks */
+ #define	SERVICE_MASK_GLOBAL	0x00007000 /*for these,service must be global*/
+ #define	SERVICE_MASK_PREFIX	0x00000FFF /* these actions have a prefix */
+-#define	SERVICE_MASK_ALL	0x7F30FFFF /* all possible actions */
++#define	SERVICE_MASK_ALL	0x7FF0FFFF /* all possible actions */
+ #define	SERVICE_MASK_NUM	(SERVICE_WANT_NICK|SERVICE_WANT_USER|\
+ 				 SERVICE_WANT_UMODE)
+ 
+Index: irc2.11.2p3.spoof/doc/versionlen.txt
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/irc2.11.2p3.spoof/doc/versionlen.txt b/irc2.11.2p3.spoof/doc/versionlen.txt
+new file mode 100644
+--- /dev/null	(date 1696269853917)
++++ b/irc2.11.2p3.spoof/doc/versionlen.txt	(date 1696269853917)
+@@ -0,0 +1,22 @@
++######################################################################
++
++versionlen - easy access config.h VERSIONLEN define for irc2.11.2p3
++
++######################################################################
++
++define VERSIONLEN in config.h to override the default ircd version
++string length limit.
++
++VERSIONLEN defaults to 32
++
++######################################################################
++
++changelog:
++
++ v1.00
++
++ 2020-01-17 -- mh
++
++  * initial version
++
++######################################################################
+Index: support/Makefile.in
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/support/Makefile.in b/support/Makefile.in
+--- a/support/Makefile.in	(revision 8d524c1f0133df9686bfc30b7545a14bf4c56e54)
++++ b/support/Makefile.in	(date 1696269853917)
+@@ -159,7 +159,7 @@
+ IRCD_OBJS = channel.o class.o hash.o ircd.o list.o res.o s_auth.o \
+               s_bsd.o s_conf.o s_debug.o s_err.o s_id.o s_misc.o s_numeric.o \
+               s_send.o s_serv.o s_service.o s_user.o s_zip.o whowas.o \
+-              res_init.o res_comp.o res_mkquery.o patricia.o
++              res_init.o res_comp.o res_mkquery.o patricia.o s_cap.o s_sasl.o
+ 
+ IAUTH_COMMON_OBJS = clsupport.o clmatch.o # This is a little evil
+ IAUTH_OBJS = iauth.o a_conf.o a_io.o a_log.o \
+@@ -385,6 +385,12 @@
+ s_zip.o: ../ircd/s_zip.c setup.h config.h ../common/struct_def.h
+ 	$(CC) $(S_CFLAGS) -c -o $@ ../ircd/s_zip.c
+ 
++s_cap.o: ../ircd/s_cap.c setup.h config.h ../common/struct_def.h
++	$(CC) $(S_CFLAGS) -c -o $@ ../ircd/s_cap.c
++
++s_sasl.o: ../ircd/s_sasl.c setup.h config.h ../common/struct_def.h
++	$(CC) $(S_CFLAGS) -c -o $@ ../ircd/s_sasl.c
++
+ whowas.o: ../ircd/whowas.c setup.h config.h ../common/struct_def.h
+ 	$(CC) $(S_CFLAGS) -c -o $@ ../ircd/whowas.c
+ 
+Index: irc2.11.2p3.spoof/doc/sasl_original.md
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/irc2.11.2p3.spoof/doc/sasl_original.md b/irc2.11.2p3.spoof/doc/sasl_original.md
+new file mode 100644
+--- /dev/null	(date 1696269853917)
++++ b/irc2.11.2p3.spoof/doc/sasl_original.md	(date 1696269853917)
+@@ -0,0 +1,314 @@
++# SASL authentication in IRC
++
++© 2014 Mantas Mikulėnas &lt;<grawity@gmail.com>&gt;
++
++This documentation is released under Creative Commons 3.0 Attribution license.
++
++---
++
++This is a description of server-server protocol, intended for ircd and services developers. For the client-server protocol descriptions, intended for client & bot developers, see the IRCv3 [sasl-3.1][] and [sasl-3.2][] specifications.
++
++---
++
++Despite at least four ircds having added SASL support by now, there has been no documentation on how this should be done from the server side.
++
++While SASL is a generic authentication layer, used by over a dozen Internet protocols, its implementation in IRC is somewhat different than anywhere else, since the authentication is almost never performed by the IRC server (ircd) itself, but rather forwarded to a services pseudoserver. This means that adding SASL support isn't a matter of linking to the right library like libgsasl, but rather a matter of exchanging data with another server on the network.
++
++SASL is documented in [RFC 4422][sasl]; in short, it is based around authentication "mechanisms", each of which defines a series of messages that the client and server should exchange, the most common mechanism being PLAIN ([RFC 4616][sasl-plain]) where the only exchange consists of the username and password being sent directly.
++
++For an IRC server that relies on separate services (which this document is aimed at), the exact SASL mechanisms being used are not important, as it only has to relay the mechanism name and data between client and services.
++
++(An ircd _could_ act as the SASL server by itself, either by using libgsasl, Dovecot, Cyrus libsasl, or by implementing some mechanisms internally – to the client it would not matter. So far, however, this has never been done (aside from Microsoft's IRCX servers), mostly because the existing services packages provide sufficient features, and they already handle old-style "/msg"-based authentication anyway, so this would only make sense when writing a new ircd that has all services features built in.)
++
++## Requirements for ircds
++
++To add SASL support to an ircd, it needs to have three features:
++
++  * _unique IDs_ to distinguish between connections,
++  * a link _protocol command_ to carry the SASL exchange between you and the services pseudoserver,
++  * and ability to store the _account name_ that each user has logged in to.
++
++### Link protocol updates
++
++Almost all existing implementations rely on a services pseudoserver (such as Atheme, X3, or Anope) to actually process the SASL exchange and authenticate the user, in a similar way to how services handle old-style authentication "/msg NickServ …" and so on. Therefore they add a server-to-server command encapsulating the SASL exchange between ircd and services.
++
++The `SASL` command varies slightly between protocols, but the basic parameters are the same: target server for routing the message; client UID; SASL message type; and 1-2 data parameters. (In protocols that support it ENCAP or a similar feature should be used, to let the messages safely pass through out-of-date hubs which otherwise drop unknown commands.)
++
++### Unique connection IDs
++
++On IRC, the SASL authentication happens during user "registration", that is, _before_ annoucing the user to the rest of the network. This allows removing such race conditions as the user being visible before their vhost/cloak is applied, or trying to join "registered-only" channels before their account name gets set. (However, SASL by itself is not enough for this; the server-to-server protocol also needs to consider these race conditions, for example, the EUID extension to TS6. This is problematic with protocols that first introduce the user and only then use ENCAP or METADATA to broadcast their account name…)
++
++The unique ID requirement exists because, as mentioned above, at the time of SASL authentication the user hasn't been announced to the network yet and quite possibly might not even have chosen a nickname at all. (It is **not** required that NICK/USER commands be sent before trying SASL authentication – they could arrive during or after it.) Besides, clients can change the nickname at any time. This means that services need a way to track authentication state per connection.
++
++For TS6 and IRCnet protocols, which already use UIDs everywhere, this is not a problem; in other protocols (like TS5, P10, RFC2813) the ircd will need to generate a temporary "pseudo-UID" (aka PUID) for each connection. It is recommended to do this by concatenating the server name, a separator like "!", and a random cookie – this also makes it easier for services to send the reply back to the correct server. (Of course, it would be even better to upgrade your protocol to TS6, but this takes more time…)
++
++### Account names
++
++While not specific to SASL (e.g. also seen in QuakeNet), all ircds that implement it are capable of storing the user's account/login name (for account-based services packages like Atheme, X3, or even modern Anope versions).
++
++During SASL authentication, the services will send another command to set the account name. Some ircds (e.g. Nefarious) use `SASL` message type "L", while others add a dedicated command like `SVSLOGIN` or `ENCAP * SVSLOGIN`; the exact choice is not very important.
++
++Yet others use generic commands like `PROP` or `METADATA`. This mostly works, but can be problematic – it must work with not-yet-announced users, so if the protocol has `METADATA` but lacks UIDs, then the command will need to be updated to accept pseudo-UIDs in addition to nicknames. For another, services may want to know the difference between an account name that was received during a netburst (e.g. if a distant server splits and rejoins) and should be accepted, versus one that a server attempted to set for an existing user (bypassing services) which services may want to reject.
++
++## Server-to-server SASL protocol
++
++The client's server and the services pseudoserver exchange SASL messages containing the client's unique ID, message type, and attached data (usually one or two parameters). These messages are encapsulated in protocol-specific commands (e.g. "SASL" or "ENCAP SASL").
++
++### Start of authentication
++
++When the client initiates authentication, the server sends a "S" message on behalf of the client, with the chosen SASL mechanism name as data.
++
++If the server has any external authentication data (e.g. TLS client certificate fingerprint, Unix user ID) it is sent as an additional parameter to the "S" message. The external data MUST be sent when the chosen mechanism is "EXTERNAL", and SHOULD be sent in all other cases as well (so that it could be used as an additional authentication factor). The data format is unspecified, though it is recommend to follow existing implementations.
++
++The ircd SHOULD also send a "H" message containing the client's host address; such a "H" message MUST precede any "S" messages.
++
++### Bad mechanism indication
++
++If the client chooses an unknown mechanism, services first send a "M" message containing a comma-separated mechanism list (corresponding to a 908 numeric), followed by a "D" message containing "F" to signal failure (corresponding to a 904 numeric).
++
++### Back-and-forth
++
++If a _known_ mechanism is chosen, the server (on behalf of the client) and services exchange "C" commands containing Base64-encoded mechanism data, or `+` if the mechanism data is empty.
++
++As soon as the mechanism is chosen, services MUST send the initial reply. If there is no data to send (e.g. if a "client-first" mechanism was chosen), services MUST still send an empty reply \[as above\].
++
++(However, for certain compatibility reasons, it is advised that services treat incoming "S" and "C" messages identically – that is, after the mechanism was chosen, accept authentication data in either "S" or "C" messages.)
++
++If the initial "S" message was broadcast (e.g. "ENCAP \* …") and no reply from services was received, the server SHOULD abort authentication after a timeout, by sending a "D" message containing "A" to services (corresponding to numeric 906 to the client).
++
++### Success indication
++
++After successful authentication, services first send a "L" message (or protocol-specific equivalent) containing the user's account name \[i.e. the authzid\], followed by a "D" message containing "S" to signal success.
++
++It is up to the server protocol implementors whether a SASL "L" message or a protocol-specific command is used. (For example, TS6 uses the "SVSLOGIN" command, while m\_spanningtree uses "METADATA".)
++
++The ircd MUST store the account name for the connection.
++
++### Failed authentication indication
++
++If the client chooses a _known_ mechanism but sends bad authentication data, services send a "D" message containing "F" to signal failure (corresponding to a 904 numeric).
++
++### Client abort (implicit)
++
++If the client either disconnects or completes registration (by sending "NICK" + "USER" + CAP END") in the middle of SASL authentication exchange, the server must abort the authentication by sending a "D" message containing "A" to services, and a 906 numeric to the client (if still connected).
++
++## Interaction between server-server and RFC 1459 client-server protocols
++
++The server MUST support the IRCv3 "capability-negotiation" and "sasl" extensions. All examples in this document use the `CAP` and `AUTHENTICATE` commands and numeric replies defined by IRCv3.
++
++The server MAY, upon receiving the `PASS` command, use the password to automatically perform SASL PLAIN authentication with services on behalf of the client.
++
++The server SHOULD NOT support the IRCX `AUTH` command.
++
++### From IRCv3 SASL protocol to services
++
++On receiving `AUTHENTICATE <data>` from the client:
++
++  - If this is a new SASL session, the server sends "H" and "S" messages to services (as documented in previous section). This first message has the SASL mechanism name as data.
++
++  - Otherwise, the server sends a "C" message to services, containing the same data.
++
++The "AUTHENTICATE" parameter MUST be at least 1 byte and at most 400 bytes long. The ircd MUST reject longer parameters with ERR\_SASLTOOLONG. If the client needs to send a larger reply, it must fragment it as specified in the IRCv3 "sasl" extension.
++
++If the client disconnects during an active SASL session, the server must abort the session by sending a "D" message containing "A" (abort) to services.
++
++If the client completes registration (sends `NICK`, `USER`, `CAP END`), the server must abort the session, send a "D" message containing "A" to services, and send numeric 906 to the client.
++
++### From services to IRCv3 SASL protocol
++
++On receiving a "C" (client) message from services, the server sends an `AUTHENTICATE <data>` reply to the client.
++
++On receiving a "D" (done) message from services, the server sends an apropriate numeric and forgets the SASL session data.
++
++  - If the "D" message data equals "S", the client is successfully authenticated, and numeric 903 is sent. (If the server doesn't know the account name yet, it's dealing with buggy services and should squit/jupe/napalm them as needed.)
++
++  - If the "D" message data equals "F", the authentication failed and numeric 904 is sent. The server MAY disconnect the client for exceeding a failure limit; otherwise, the client MAY immediately start a new session by sending `AUTHENTICATE` again.
++
++On receiving a "L" (login) message from services, the server stores the first parameter as the user's account name and sends numeric 900 to the client.
++
++On receiving a "M" (mechlist) message from services, the server sends numeric 908 to the client, containing the received data as `<list>`. The server must not assume failed authentication from a "M" message alone.
++
++Services never send "H" or "S" messages.
++
++### Summary of "SASL" message types
++
++  - type "C" – client data
++      - sent in both directions
++      - data is the SASL buffer (directly converted to/from "AUTHENTICATE …data…")
++  - type "D" – authentication done
++      - sent in both directions
++      - data "A" (from ircd) – auth aborted by client
++      - data "S" (from services) – auth successful
++      - data "F" (from services) – auth failed
++  - type "H" – client host address
++      - sent by ircd
++      - data[0] is the client's visible hostname
++      - data[1] is the IP address (may be "`0`" if server refuses to reveal it)
++      - data[2] (optional) is "`P`" to indicate plain-text (non-TLS) connection, any other non-empty string to indicate TLS
++  - type "L" – user login
++      - sent by services
++      - data is the account name
++  - type "M" – supported mechanisms
++      - sent by services
++      - data is a comma-separated mechanism list, re-sent to user as RPL\_SASLMECHS
++  - type "S" – start authentication
++      - sent by ircd
++      - data is the mechanism given by user
++      - extdata is the SASL EXTERNAL authentication data supplied by ircd
++
++### Summary of numeric formats
++
++    RPL_LOGGEDIN      "900 <nick> %s!%s@%s %s :You are now logged in as %s."
++    RPL_LOGGEDOUT     "901 <nick> %s!%s@%s :You are now logged out."
++    ERR_NICKLOCKED    "902 <nick> :You must use a nick assigned to you." // What's it for?
++    RPL_SASLSUCCESS   "903 <nick> :SASL authentication successful"
++    ERR_SASLFAILED    "904 <nick> :SASL authentication failed"
++    ERR_SASLTOOLONG   "905 <nick> :SASL message too long"
++    ERR_SASLABORTED   "906 <nick> :SASL authentication aborted"
++    ERR_SASLALREADY   "907 <nick> :You have already completed SASL authentication"
++    RPL_SASLMECHS     "908 <nick> <list> :are available SASL mechanisms"
++
++## Existing S2S protocol extensions
++
++### TS6 protocol
++
++Refer to [ts6-protocol.txt][charybdis-ts6] in Charybdis source tree for the authoritative version of this documentation.
++
++Command name: `SASL` (always ENCAP)
++
++Command parameters:
++
++  - source UID (either client or services)
++  - target UID (either services or client) or `*`
++  - message type ("S", "D", etc.)
++  - data (may be more than one parameter)
++
++The `SASL` command requires ENCAP. The first message may be broadcast or sent to a configured services server name. All later messages are sent directly to the apropriate server.
++
++The first message (sent on behalf of the client) has `*` as the target UID, as the SASL agent is not known yet. All later messages are exchanged between the client's and the agent's (service's) UIDs. Note that some services use their SID, instead of an UID, as the SASL agent.
++
++The account name is set using a separate `SVSLOGIN` command, which is documented in [ts6-protocol.txt][charybdis-ts6].
++
++### InspIRCd (m\_spanningtree) version of TS6
++
++The `SASL` command is the same as in TS6 (except InspIRCd prefers SIDs in ENCAP instead of server names, but that is out of scope for this file).
++
++The account name is set using the [`METADATA` command][inspircd-metadata], in the "accountname" field.
++
++### UnrealIRCd 3.2 protocol
++
++Command name: `SASL` (token `SY`)
++
++Command parameters:
++
++  - target server name
++  - client PUID
++  - message type ("S", "D", etc.)
++  - data (may be more than one parameter)
++
++Since the protocol in version 3.2 does not have unique user IDs, the ircd generates a pseudo-UID consisting of the server name, a "!" character,  and a random cookie. (This is similar to UIDs, which also start with the server's ID.)
++
++The account name is set using a `SVSLOGIN` command (token `SZ`):
++
++Command parameters:
++
++  - target server name
++  - client PUID
++  - account name
++
++Note that the target server parameter is always specified by its full name, never by "@numeric".
++
++### Nefarious2 version of P10 protocol
++
++Command token: `SASL`
++
++Command parameters:
++
++  - target server numeric or "\*"
++  - client PUID
++  - message type ("S", "D", etc.)
++  - data (may be more than one parameter)
++
++Since the ircd assigns UIDs very late (immediately before introducing the user), during SASL authentication it generates a pseudo-UID consisting of the server ID, a "!" character, and a random cookie. (This is similar to UIDs, which also start with the server's ID.)
++
++The accountname is set using the "L" SASL message.
++
++## Examples
++
++TS6 example of successful EXTERNAL authentication:
++
++    --> :0HA ENCAP *            SASL     0HAAAAF37 * H poseidon.int 2001:db8::1a36
++    --> :0HA ENCAP *            SASL     0HAAAAF37 * S EXTERNAL 57366a8747e...
++    <-- :5RV ENCAP hades.arpa   SASL     5RVAAAAA0 0HAAAAF37 C +
++    --> :0HA ENCAP services.int SASL     0HAAAAF37 5RVAAAAA0 C Z3Jhd2l0eQ==
++    <-- :5RV ENCAP hades.arpa   SVSLOGIN 0HAAAAF37 * * * grawity
++    <-- :5RV ENCAP hades.arpa   SASL     5RVAAAAA0 0HAAAAF37 D S
++
++TS6 example of a bad mechanism error:
++
++    --> :0HA ENCAP *          SASL 0HAAAAF37 * H poseidon.int 192.0.42.7
++    --> :0HA ENCAP *          SASL 0HAAAAF37 * S DIGEST-MD5
++    <-- :5RV ENCAP hades.arpa SASL 5RVAAAAA0 0HAAAAF37 M PLAIN,EXTERNAL,GSSAPI
++    <-- :5RV ENCAP hades.arpa SASL 5RVAAAAA0 0HAAAAF37 D F
++
++InspIRCd 2.x m\_spanningtree example of successful SCRAM-SHA-1 authentication:
++
++    --> :1SP ENCAP    *   SASL 1SP000251 * S SCRAM-SHA-1
++    <-- :00A ENCAP    1SP SASL 00AAAAAAG 1SP000251 C +
++    --> :1SP ENCAP    *   SASL 1SP000251 00AAAAAAG C biwsbj1ncmF3aXR5LHI9L1NRQz...
++    <-- :00A ENCAP    1SP SASL 00AAAAAAG 1SP000251 C cj0vU1FDN3RqM0xMWOEhUZk...
++    --> :1SP ENCAP    *   SASL 1SP000251 00AAAAAAG C Yz1iaXdzLHI9L1NRQzd0ajNMTF...
++    <-- :00A ENCAP    1SP SASL 00AAAAAAG 1SP000251 C dj03bGdLeElRRHBRT3Ss1Zn...
++    --> :1SP ENCAP    *   SASL 1SP000251 00AAAAAAG C +
++    <-- :00A ENCAP    1SP SASL 00AAAAAAG 1SP000251 C +
++    <-- :00A METADATA 1SP000251 accountname :grawity
++    <-- :00A ENCAP    1SP SASL 00AAAAAAG 1SP000251 D S
++
++UnrealIRCd 3.2 example of successful PLAIN authentication (without tokens or server-numerics):
++
++    --> :hades.arpa SASL     services.int hades.arpa!23.760 S PLAIN
++    <-- :SaslServ   SASL     hades.arpa   hades.arpa!23.760 C +
++    --> :hades.arpa SASL     services.int hades.arpa!23.760 C Z3Jhd2l0eQB...
++    <-- :SaslServ   SVSLOGIN hades.arpa   hades.arpa!23.760 grawity
++    <-- :SaslServ   SASL     hades.arpa   hades.arpa!23.760 D S
++
++UnrealIRCd 3.2 example of the client aborting authentication (note that D A is sent by the ircd, and services do not reply to it):
++
++    --> :hades.arpa SASL services.int hades.arpa!24.5541 S PLAIN
++    <-- :SaslServ   SASL hades.arpa   hades.arpa!24.5541 C +
++    --> :hades.arpa SASL services.int hades.arpa!24.5541 D A
++
++Nefarious2 P10 example of succesful PLAIN authentication (ircd has numeric `Aq`, services `AB`):
++
++    --> Aq SASL *  Aq!17.1504627973 S :PLAIN
++    <-- AB SASL Aq Aq!17.1504627973 C +
++    --> Aq SASL AB Aq!17.1504627973 C :Z3Jhd2l0eQB...
++    <-- AB SASL Aq Aq!17.1504627973 L grawity
++    <-- AB SASL Aq Aq!17.1504627973 D S
++
++## Client examples
++
++The client-to-server dialogue is already documented by the IRCv3 capability specification and by the IRCv3 "sasl" extension, but here's an example for comparison with the above server-to-server exchanges.
++
++    --> AUTHENTICATE DIGEST-MD5
++    <-- :hades.arpa 908 grw PLAIN,EXTERNAL :are the available SASL mechanisms
++    <-- :hades.arpa 904 grw :SASL authentication failed
++
++    --> AUTHENTICATE PLAIN
++    <-- AUTHENTICATE +
++    --> AUTHENTICATE Z3Jhd2l0eQB...
++    <-- :hades.arpa 900 grw grw!~root@rain.local grawity :You are now logged in as grawity.
++    <-- :hades.arpa 903 grw :SASL authentication successful
++
++("CAP REQ" is required but it is not technically part of the SASL exchange; it does not cause any message to services, therefore it was left out of this example. Likewise, PASS, NICK, and USER were omitted because they are not relevant to the SASL exchange and can be sent at any time.)
++
++[charybdis-ts6]: https://github.com/atheme/charybdis/blob/master/doc/technical/ts6-protocol.txt
++[inspircd-metadata]: https://github.com/attilamolnar/wiki/blob/gh-pages/Modules/spanningtree/commands/METADATA.md
++[sasl]: https://tools.ietf.org/html/rfc4422
++[sasl-plain]: https://tools.ietf.org/search/rfc4616
++[sasl-3.1]: http://ircv3.net/specs/extensions/sasl-3.1.html
++[sasl-3.2]: http://ircv3.net/specs/extensions/sasl-3.2.html
++
++<!--
++vim: ts=4:sw=4:et
++-->
+\ No newline at end of file
+Index: ircd/s_conf.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/ircd/s_conf.c b/ircd/s_conf.c
+--- a/ircd/s_conf.c	(revision 8d524c1f0133df9686bfc30b7545a14bf4c56e54)
++++ b/ircd/s_conf.c	(date 1696269853917)
+@@ -127,6 +127,10 @@
+ 	{
+ 		tmp |= CFLAG_FALL;
+ 	}
++    if (index(string,'S'))
++    {
++        tmp |= CFLAG_REQUIRE_SASL;
++    }
+ 
+ 	return tmp;
+ }
+@@ -171,6 +175,10 @@
+ 	{
+ 		*s++ = 'F';
+ 	}
++    if (flags & CFLAG_REQUIRE_SASL)
++    {
++        *s++ = 'S';
++    }
+ 	if (s == ifsbuf)
+ 	{
+ 		*s++ = '-';
+@@ -497,6 +505,18 @@
+ 		{
+ 			continue;
+ 		}
++		if(IsConfRequireSASL(aconf) && !IsSASLAuthed(cptr))
++		{
++            if (IsConfFallThrough(aconf))
++            {
++                continue;
++            }
++            else
++            {
++                retval = -9; /* EXITC_SASL_REQUIRED */
++                break;
++            }
++        }
+ 		/* aconf->name can be NULL with wrong I:line in the config
+ 		** (without all required fields). If aconf->host can be NULL,
+ 		** I don't know. Anyway, this is an error! --B. */
+@@ -505,6 +525,14 @@
+ 			/* Try another I:line. */
+ 			continue;
+ 		}
++#ifdef PASSOPTS
++		/* try another I-line if client password is required to match
++		 * I-line password, and I-line does not have one -- mh 20200102 */
++		if (IsReqPass(cptr) && BadPtr(aconf->passwd))
++		{
++			continue;
++		}
++#endif
+ 
+ 		/* If anything in aconf->name... */
+ 		if (*aconf->name)
+@@ -613,10 +641,35 @@
+ 		{
+ 			find_bounce(cptr, ConfClass(aconf), -1);
+ 		}
++#ifdef SPOOF
++		if(IsConfSpoofed(aconf))
++		{
++		    strncpyzt(cptr->sockhost, aconf->name2, HOSTLEN+1);
++		    strncpyzt(cptr->user->host, aconf->name2, HOSTLEN+1);
++			SetSpoofed(cptr);
++		}
++		else if(cptr->cloak_tmp && *cptr->cloak_tmp)
++        {
++		    strncpyzt(cptr->sockhost, cptr->cloak_tmp, HOSTLEN+1);
++		    strncpyzt(cptr->user->host, cptr->cloak_tmp, HOSTLEN+1);
++		    MyFree(cptr->cloak_tmp);
++		    cptr->cloak_tmp = NULL;
++		    SetSpoofed(cptr);
++        }
++#endif
+ 		break;
+ 	}
+ 	if (retval == -2)
+ 	{
++#ifdef PASSOPTS
++		if (IsReqPass(cptr))
++		{
++			/* client requested password to match but no I-line passwords did */
++			sendto_one(cptr, replies[ERR_PASSWDMISMATCH], ME, BadTo(cptr->name));
++			retval = -8; /* EXITC_BADPASS */
++			return retval;
++		}
++#endif
+ 		find_bounce(cptr, 0, -2);
+ 	}
+ 	return retval;
+@@ -1799,6 +1852,14 @@
+ 					pline_flags_parse(tmp3));
+ 			}
+ 
++#ifdef SPOOF
++			/* any spoofed host in this line? */
++			if(aconf->status & CONF_CLIENT && tmp4 && *tmp4)
++			{
++				DupString(aconf->name2, tmp4);
++				aconf->flags |= CFLAG_SPOOFED;
++			}
++#endif
+ 			/* trying to find exact conf line in already existing
+ 			 * conf, so we don't delete old one, just update it */
+ 			if (
+@@ -2679,6 +2740,14 @@
+ 			time = TKLINE_MAXTIME;
+ 		if (time < 0) /* overflown, must have wanted bignum :) */
+ 			time = TKLINE_MAXTIME;
++#endif
++#ifdef TKLINE_MAXTIME_REMOTE
++		if (!MyClient(sptr)) {
++			if (time > TKLINE_MAXTIME_REMOTE)
++				time = TKLINE_MAXTIME_REMOTE;
++			if (time < 0) /* overflown, must have wanted bignum :) */
++				time = TKLINE_MAXTIME_REMOTE;
++		}
+ #endif
+ 		user = parv[2];
+ 		reason = parv[3];
+Index: irc2.11.2p3.spoof/doc/whoisextra.txt
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/irc2.11.2p3.spoof/doc/whoisextra.txt b/irc2.11.2p3.spoof/doc/whoisextra.txt
+new file mode 100644
+--- /dev/null	(date 1696269853917)
++++ b/irc2.11.2p3.spoof/doc/whoisextra.txt	(date 1696269853917)
+@@ -0,0 +1,24 @@
++######################################################################
++
++whoisextra - RPL_WHOISEXTRA numeric 320 for irc2.11.2p3
++
++######################################################################
++
++define WHOISEXTRA in config.h to add RPL_WHOISEXTRA numeric 320 with
++format ":%s 320 %s %s :%s"
++
++WHOISEXTRA is enabled by default
++
++this is non-standard use of numeric 320
++
++######################################################################
++
++changelog:
++
++ v1.00
++
++ 2020-01-11 -- mh
++
++  * initial version
++
++######################################################################
+Index: irc2.11.2p3.spoof/doc/sasl.md
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/irc2.11.2p3.spoof/doc/sasl.md b/irc2.11.2p3.spoof/doc/sasl.md
+new file mode 100644
+--- /dev/null	(date 1696269853917)
++++ b/irc2.11.2p3.spoof/doc/sasl.md	(date 1696269853917)
+@@ -0,0 +1,44 @@
++# SASL
++This implementation is based on the documentation from Mantas Mikulėnas. Read *sasl_original.md* first.
++
++The following things are different:
++* logout is not supported
++* abortion of authentication is not supported, the user has to disable SASL explicitly at his IRC client if he wants to connect without authentication
++* the L-message contains the cloak (`L <loginName> <cloak>`) and the ircd sets it after successful authentication
++* the H-message contains a hostmask (`H <nick>[[ident]@ip]`)
++* services as described in *SERVICE.txt* will be used
++
++You need to set up at least one service with the flags SERVICE_WANT_SASL and SERVICE_WANT_ENCAP.
++
++    S%::1%password%SASLService%0xc00000%1
++
++## Example of a successful authentication
++    [User -> Server]    CAP LS
++    [User -> Server]    NICK patrick
++    [User -> Server]    USER patrick patrick localhost :patrick
++    // The server sends a list of his capabilities
++    [Server -> User]    :irc1.localhost CAP * LS :sasl
++    // The client requests the SASL capability
++    [User -> Server]    CAP REQ :sasl
++    [Server -> User]    :irc1.localhost CAP * ACK :sasl
++    // The client says that he is going to use "PLAIN" mechanism
++    [User -> Server]    AUTHENTICATE PLAIN
++    // The server finds the closest SASL service and assigns him to the user. This and all following messages will be forwarded to this service.
++    [Server -> Service] :000B SASL 000BAAAAD SASLService@irc1.localhost H patrick[patrick@127.0.0.1]
++    [Server -> Service] :000B SASL 000BAAAAD SASLService@irc1.localhost S PLAIN
++    // The SASL service says that he supports the "PLAIN" mechanism
++    [Service -> Server] ENCAP 000B SASL 000BAAAAD * C +
++    [Server -> User]    AUTHENTICATE +
++    // The user sends the Base64 encoded credentials to the server
++    [User -> Server]    AUTHENTICATE dXNlcjEAdXNlcjEAdXNlcjEtcGFzc3dvcmQxMjM=
++    // The server forwards the message to the SASL service
++    [Server -> Service] :000B SASL 000BAAAAD SASLService@irc1.localhost C dXNlcjEAdXNlcjEAdXNlcjEtcGFzc3dvcmQxMjM=
++    // The service validates the credentials and sends success messages
++    [Service -> Server] ENCAP 000B SASL 000BAAAAD * L user1 spoof1.ircnet.com
++    [Service -> Server] ENCAP 000B SASL 000BAAAAD * D S
++    // The server sets the cloak and sends a success message to the client
++    [Server -> User]    :irc1.localhost 900 patrick :You are now logged in as user1.
++    [Server -> User]    :irc1.localhost 903 patrick :SASL authentication successful
++    // The client completes the registration
++    [User -> Server]    CAP END
++    [Server -> User]    :irc1.localhost 001 patrick :Welcome to the Internet Relay Network patrick!patrick@spoof1.ircnet.com
+Index: irc2.11.2p3.spoof/doc/passopts.txt
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/irc2.11.2p3.spoof/doc/passopts.txt b/irc2.11.2p3.spoof/doc/passopts.txt
+new file mode 100644
+--- /dev/null	(date 1696269853917)
++++ b/irc2.11.2p3.spoof/doc/passopts.txt	(date 1696269853917)
+@@ -0,0 +1,171 @@
++######################################################################
++
++passopts - extended PASS options for irc2.11.2p3
++
++######################################################################
++
++an attempt to solve the problem with clients connecting with a
++password, expecting it to match an I-line, but matching another non-
++passworded I-line (possibly revealing their real address if spoofed)
++
++this current proposal (passopts v1) is far from perfect and it still
++needs some adjusting, it might change entirely. it does not work with
++: prefixed passwords (passwords which may or may not have a space)
++
++i does however work quite well for many clients and is not breaking
++anything for the rest (passopts just doesnt work for them)
++
++PASSOPTS is enabled by default
++
++######################################################################
++
++current proposal (as implemented in passopts v1):
++
++ PASS <password> [<passopts>]
++
++  ignore remaining arguments if any
++
++  <password>
++   password as per RFC
++
++  <passopts>
++   integer (in base 10 only) bitfield of password options
++
++  fail gracefully if <passopts> is not numeric (as if 0)
++
++  ignore unknown bits if any
++
++  allow prepended 0s
++
++  0x01 POFLAG_REQPASS
++    require I-line password match client password and do not allow
++    matching empty I-line password
++
++  examples:
++
++   PASS mustmatch 1
++   PASS dontcare 0
++   PASS mustmatch 007
++   PASS dontcare 42
++   PASS mustmatch 1 any thing
++
++ thank you to the following people for helping with the first draft
++ of the passopts specification: BR and patrick
++
++######################################################################
++
++client compatibility notes (passopts v1):
++
++ rev 1.03 -- mh 20200118
++  * major cosmetic cleanup
++ rev 1.02 -- mh 20200107
++  * kiwiirc client compatibility updated (removed reminder to self -
++    "PASS :x y" is being looked into now :)
++  * weechat client compatibility updated (from doni/patrick)
++  * minor cosmetic cleanup
++ rev 1.01 -- mh 20200106
++  * minor cosmetic ckeanup
++  * kiwiirc.com client compatibility added
++  * xchat and colloquy client compatibility added (from proto)
++ rev 1.00 -- mh 20200106
++  * first draft
++
++ Android IRC (IRC for Android)                           [compatible]
++
++  no known issues
++
++
++ Colloquy                                                [compatible]
++
++  no known issues
++
++
++ ircII/EPIC                                       [almost compatible]
++
++  /xeval xecho $serverctl(SET 0 PASSWORD <password> <passopts>)
++
++
++ Irssi                                                   [compatible]
++
++  /connect <server> <port> "<pass> <passopts>"
++
++  config stores password correctly, and client generally supports
++  passopts (as long as they are given in quotes)
++
++  commandline -w and --password do not work - even if quoted
++
++
++ kiwiirc.com                                         [not compatible]
++
++  sends ":<password> <passopts>" which does not work
++
++
++ mibbit.com                                          [not compatible]
++
++  does not support spaces in the password field
++
++
++ mIRC                                                    [compatible]
++
++  no known issues
++
++
++ Palaver for IOS                                         [compatible]
++
++  no known issues
++
++
++ Textual                                                 [compatible]
++
++  no known issues
++
++
++ webchat.ircnet.net                                  [not compatible]
++
++  does not have a password field enabled at all
++
++
++ weechat                                             [not compatible]
++
++  sends ":<password> <passopts>" which does not work
++
++
++ xchat                                                   [compatible]
++
++  no known issues
++
++
++ znc                                                     [compatible]
++
++  no known issues
++
++ if you find a mistake in the list or have any new information about
++ a client please let me know -- mh on IRCnet #ircnet.com
++
++ thank you to the following people for helping with and reporting
++ results on client compatibility tests: BR, doni, patrick, and proto
++
++######################################################################
++
++changelog:
++
++ v1.01
++
++ 2020-01-12 -- mh
++
++  * ircd/s_conf.c:attach_Iline(): simplified the code sending an
++    error if a clients required password didnt match any I-line
++
++  * removed passopts spec. from source, its in doc/passopts.txt now
++
++ 2020-01-11 -- mh
++
++  * passopts are now checked against defined flags, not a hardcoded
++    value. so far there is only one flag POFLAG_REQPASS
++
++  * added doc/passopts.txt to patch.
++
++  * based on passopts v1 (po+spoof) which is in turn based on the
++    ircd spoof patch by patrick at ircnet.com.
++
++######################################################################
+Index: ircd/s_serv_ext.h
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/ircd/s_serv_ext.h b/ircd/s_serv_ext.h
+--- a/ircd/s_serv_ext.h	(revision 8d524c1f0133df9686bfc30b7545a14bf4c56e54)
++++ b/ircd/s_serv_ext.h	(date 1696269853917)
+@@ -70,6 +70,9 @@
+ EXTERN int m_restart (aClient *cptr, aClient *sptr, int parc, char *parv[]);
+ EXTERN int m_die (aClient *cptr, aClient *sptr, int parc, char *parv[]);
+ EXTERN int m_set(aClient *cptr, aClient *sptr, int parc, char *parv[]);
++EXTERN int m_cap(aClient *cptr, aClient *sptr, int parc, char *parv[]);
++EXTERN int m_authenticate(aClient *cptr, aClient *sptr, int parc, char *parv[]);
++EXTERN int m_sasl(aClient *cptr, aClient *sptr, int parc, char *parv[]);
+ 
+ void	add_server_to_tree(aClient *cptr);
+ void	remove_server_from_tree(aClient *cptr);
+@@ -78,4 +81,6 @@
+ 
+ EXTERN int register_server(aClient *cptr);
+ EXTERN int unregister_server(aClient *cptr);
++
++EXTERN aClient *best_service_with_flags(int flags);
+ #undef EXTERN
+Index: irc2.11.2p3.spoof/doc/passwdlen.txt
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/irc2.11.2p3.spoof/doc/passwdlen.txt b/irc2.11.2p3.spoof/doc/passwdlen.txt
+new file mode 100644
+--- /dev/null	(date 1696269853917)
++++ b/irc2.11.2p3.spoof/doc/passwdlen.txt	(date 1696269853917)
+@@ -0,0 +1,21 @@
++######################################################################
++
++passwdlen - easy config.h access PASSWDLEN define for irc2.11.2p3
++
++######################################################################
++
++define PASSWDLEN in config.h to override the default ircd PASSWDLEN
++
++PASSWDLEN defaults to 128
++
++######################################################################
++
++changelog:
++
++ v1.00
++
++ 2020-01-17 -- mh
++
++  * initial version based on passopts v1 (po+spoof)
++
++######################################################################
+Index: ircd/s_sasl.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/ircd/s_sasl.c b/ircd/s_sasl.c
+new file mode 100644
+--- /dev/null	(date 1696269853917)
++++ b/ircd/s_sasl.c	(date 1696269853917)
+@@ -0,0 +1,243 @@
++/*
++ *   IRC - Internet Relay Chat, ircd/s_sasl.c
++ *
++ *   Copyright (C) 2006 Michael Tharp <gxti@partiallystapled.com>
++ *   Copyright (C) 2006 charybdis development team
++ *   Copyright (C) 2021 IRCnet.com team
++ *
++ *   This program is free software; you can redistribute it and/or modify
++ *   it under the terms of the GNU General Public License as published by
++ *   the Free Software Foundation; either version 1, or (at your option)
++ *   any later version.
++ *
++ *   This program is distributed in the hope that it will be useful,
++ *   but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *   GNU General Public License for more details.
++ *
++ *   You should have received a copy of the GNU General Public License
++ *   along with this program; if not, write to the Free Software
++ *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
++ */
++
++#include "os.h"
++#include "s_defines.h"
++#include "s_externs.h"
++
++static void sendto_service(aClient *service, char *fmt, ...);
++static void m_sasl_service(aClient *cptr, aClient *sptr, int parc, char *parv[]);
++static void m_sasl_server(aClient *cptr, aClient *sptr, int parc, char *parv[]);
++
++int m_authenticate(aClient *cptr, aClient *sptr, int parc, char *parv[]) {
++    if(!HasCap(sptr, CAP_SASL)) {
++        return 0;
++    }
++
++    if (*parv[1] == ':' || strchr(parv[1], ' '))
++    {
++        sptr->exitc = EXITC_SASL_REQUIRED;
++        exit_client(cptr, sptr, sptr, "Malformed AUTHENTICATE");
++        return cptr == sptr ? FLUSH_BUFFER : 0;
++    }
++
++    if(IsSASLAuthed(sptr))
++    {
++        sendto_one(sptr, replies[ERR_SASLALREADY], me.name, BadTo(sptr->name));
++        return 0;
++    }
++
++    if(strlen(parv[1]) > 400)
++    {
++        sendto_one(sptr, replies[ERR_SASLTOOLONG], me.name, BadTo(sptr->name));
++        return 0;
++    }
++
++    if(!*sptr->uid) {
++        // A unique identifier is required at this point. Allocate UID nick here and re-use it on registration.
++        strcpy(sptr->uid, next_uid());
++        add_to_uid_hash_table(sptr->uid, sptr);
++    }
++
++    if(!sptr->sasl_service)
++    {
++        // Assign a service
++        sptr->sasl_service = best_service_with_flags(SERVICE_WANT_SASL);
++
++        if(!sptr->sasl_service) {
++            // No SASL service found.
++            sptr->exitc = EXITC_SASL_REQUIRED;
++            exit_client(cptr, sptr, sptr, "SASL service is temporary not available");
++            return cptr == sptr ? FLUSH_BUFFER : 0;
++        }
++
++        sendto_service(sptr->sasl_service, "SASL %s %s H %s", sptr->uid, sptr->sasl_service->name,
++                       get_client_name(sptr, FALSE));
++        sendto_service(sptr->sasl_service, "SASL %s %s S %s", sptr->uid, sptr->sasl_service->name, parv[1]);
++    }
++    else {
++        sendto_service(sptr->sasl_service, "SASL %s %s C %s", sptr->uid, sptr->sasl_service->name, parv[1]);
++    }
++
++    return 0;
++}
++
++int m_sasl(aClient *cptr, aClient *sptr, int parc, char *parv[]) {
++    if(IsServer(sptr)) {
++        m_sasl_server(cptr, sptr, parc, parv);
++    }
++    else if(IsService(sptr)) {
++        m_sasl_service(cptr, sptr, parc, parv);
++    }
++
++    return 0;
++}
++
++/*
++ * SASL message from service.
++ *
++ * parv[0] = Server name
++ * parv[1] = UID nick of the authenticating user
++ * parv[2] = Name of the SASL service
++ * parv[3] = SASL message type
++ * parv[4] = SASL message
++ * parv[5] = SASL message (optional)
++ */
++void m_sasl_service(aClient *cptr, aClient *sptr, int parc, char *parv[]) {
++    aClient *acptr;
++
++    if (parc < 5) {
++        return;
++    }
++
++    if(!IsService(sptr)) {
++        return;
++    }
++
++    // Find user by UID nick
++    acptr = find_uid(parv[1], NULL);
++
++    if(acptr == NULL) {
++        return;
++    }
++
++    // Check if the assigned service is responding
++    if (acptr->sasl_service == NULL
++        || acptr->sasl_service->service == NULL
++        || acptr->sasl_service->service != sptr->service) {
++        return;
++    }
++
++    if(*parv[3] == 'C') {
++        sendto_one(acptr, "AUTHENTICATE %s", parv[4]);
++    }
++    else if(*parv[3] == 'L') {
++        // Login
++        acptr->sasl_user = mystrdup(parv[4]);
++        sendto_one(acptr, replies[RPL_LOGGEDIN], me.name, BadTo(acptr->name), parv[4]);
++
++#ifdef SPOOF
++        if (parc >= 6) {
++            // Store cloaked hostname. It will finally be set by attach_Iline().
++            acptr->cloak_tmp = mystrdup(parv[5]);
++        }
++#endif
++    }
++    else if(*parv[3] == 'D') {
++        // Authentication done
++        if(*parv[4] == 'S') {
++            // Authentication successful
++            acptr->flags |= FLAGS_SASL;
++            sendto_one(acptr, replies[RPL_SASLSUCCESS], me.name, BadTo(acptr->name));
++        }
++        else if(*parv[4] == 'F') {
++            // Authentication failed
++            sendto_one(acptr, replies[ERR_SASLFAIL], me.name, BadTo(acptr->name));
++            acptr->sasl_auth_attempts++;
++
++            if(acptr->sasl_auth_attempts >= MAX_SASL_AUTH_ATTEMPTS) {
++                acptr->exitc = EXITC_SASL_REQUIRED;
++                exit_client(acptr, acptr, &me, "SASL authentication failed");
++            }
++
++            return;
++        }
++        else if(*parv[4] == 'A') {
++            // Authentication aborted
++            sendto_one(acptr, replies[ERR_SASLABORTED], me.name, BadTo(acptr->name));
++            return;
++        }
++
++        // Unset the stored service so best_service() is executed again on next try
++        acptr->sasl_service = NULL;
++    }
++    else if(*parv[3] == 'M') {
++        // Supported mechanisms
++        sendto_one(acptr, replies[RPL_SASLMECHS], me.name, BadTo(acptr->name), parv[4]);
++    }
++}
++
++/*
++ * SASL message from server.
++ *
++ * parv[0] = Server name that sent the message
++ * parv[1] = UID nick of the authenticating user
++ * parv[2] = Name of the SASL service
++ * parv[3] = SASL message type
++ * parv[4] = SASL message
++ */
++void m_sasl_server(aClient *cptr, aClient *sptr, int parc, char *parv[]) {
++    aClient *acptr;
++
++    if (parc < 5) {
++        return;
++    }
++
++    if ((acptr = find_service(parv[2], NULL)) && MyConnect(acptr)) {
++        sendto_one(acptr, ":%s SASL %s %s %s %s", parv[0], parv[1], parv[2], parv[3], parv[4]);
++    }
++}
++
++/*
++ * Executed when the client aborted the SASL authentication exchange implicitly.
++ * Example: the client sent "CAP END" before completing the authentication.
++ */
++int process_implicit_sasl_abort(aClient *sptr) {
++    if (sptr->sasl_service != NULL) {
++        // Inform the service that the authentication has been aborted
++        sendto_service(sptr->sasl_service, "SASL %s %s D A", sptr->uid, sptr->sasl_service->name);
++    }
++
++    /*
++     * If SASL authentication fails, some clients are automatically trying to register without authentication
++     * which would expose the IP address of the user. We disconnect him until he explicitly decides to connect
++     * without authentication.
++     */
++    sptr->exitc = EXITC_SASL_REQUIRED;
++    exit_client(sptr, sptr, sptr, "SASL authentication failed");
++    return FLUSH_BUFFER;
++}
++
++/*
++ * Sends a message to a service.
++ * If the service is not connected to this server, ENCAP will be sent. This way the message is also routed if not all
++ * servers support the "SASL" command.
++ */
++void sendto_service(aClient *service, char *fmt, ...) {
++    char buf[BUFSIZE];
++    va_list	va;
++
++    if(!IsService(service)) {
++        return;
++    }
++
++    va_start(va, fmt);
++    vsnprintf(buf, BUFSIZE, fmt, va);
++    va_end(va);
++
++    if (MyConnect(service)) {
++        sendto_one(service, ":%s %s", me.serv->sid, buf);
++    }
++    else {
++        sendto_one(service, ":%s ENCAP %s PARSE %s %s", me.serv->sid, service->service->servp->sid, me.serv->sid, buf);
++    }
++}
+Index: ircd/s_user.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/ircd/s_user.c b/ircd/s_user.c
+--- a/ircd/s_user.c	(revision 8d524c1f0133df9686bfc30b7545a14bf4c56e54)
++++ b/ircd/s_user.c	(date 1696269853917)
+@@ -549,8 +549,9 @@
+ 		if ((i = check_client(sptr)))
+ 		{
+ 			struct msg_set { char shortm; char *longm; };
+-#define EXIT_MSG_COUNT 8
++#define EXIT_MSG_COUNT 9
+ 			static struct msg_set exit_msg[EXIT_MSG_COUNT] = {
++			{ EXITC_SASL_REQUIRED, "SASL authentication required" },
+ 			{ EXITC_BADPASS, "Bad password" },
+ 			{ EXITC_GUHMAX, "Too many user connections (global)" },
+ 			{ EXITC_GHMAX, "Too many host connections (global)" },
+@@ -581,6 +582,9 @@
+ 			}
+ 			return exit_client(cptr, cptr, &me, exit_msg[i].longm);
+ 		}
++#ifdef SPOOF
++		aconf = sptr->confs->value.aconf;
++#endif
+ #ifndef	NO_PREFIX
+ 		if (IsRestricted(sptr))
+ 		{
+@@ -598,7 +602,19 @@
+ 		}
+ #endif
+ 
++#ifdef SPOOF
++#ifdef SPOOF_IDENTCHAR
++		if(IsSpoofed(cptr))
++		{
++			prefix = SPOOF_IDENTCHAR;
++			*user->username = prefix;
++			strncpy(&user->username[1], buf2, USERLEN);
++			user->username[USERLEN] = '\0';
++		}
++#endif
++#else
+ 		aconf = sptr->confs->value.aconf;
++#endif
+ #ifdef UNIXPORT
+ 		if (IsUnixSocket(sptr))
+ 		{
+@@ -655,7 +671,7 @@
+ 		{
+ 			/* I think this is not possible anymore. --B. */
+ 			sendto_one(cptr, ":%s KILL %s :%s (%s != %s[%s])",
+-				ME, user->uid, ME, user->server,
++				ME, sptr->uid, ME, user->server,
+ 				acptr->from->name, acptr->from->sockhost);
+ 			sptr->flags |= FLAGS_KILLED;
+ 			return exit_client(cptr, sptr, &me,
+@@ -720,10 +736,15 @@
+ 			istat.is_l_myclnt_t = timeofday;
+ 			istat.is_l_myclnt = istat.is_myclnt;
+ 		}
+-		strcpy(sptr->user->uid, next_uid());
++        // may have been set in m_authenticate() already
++		if(!*sptr->uid)
++        {
++            strcpy(sptr->uid, next_uid());
++            add_to_uid_hash_table(sptr->uid, sptr);
++        }
+ 		if (nick[0] == '0' && nick[1] == '\0')
+ 		{
+-			strncpyzt(nick, sptr->user->uid, UIDLEN + 1);
++			strncpyzt(nick, sptr->uid, UIDLEN + 1);
+ 			(void)strcpy(sptr->name, nick);
+ 			(void)add_to_client_hash_table(nick, sptr);
+ 		}
+@@ -735,7 +756,7 @@
+ #  endif
+ 			" :%s"
+ # endif
+-			, user->uid, nick, user->username,
++			, sptr->uid, nick, user->username,
+ 			user->host, user->sip
+ # if (CLIENTS_CHANNEL_LEVEL & CCL_CONNINFO)
+ #  ifdef XLINE
+@@ -745,8 +766,25 @@
+ # endif
+ 			);
+ #endif
++#ifdef SPOOF_WELCOME_ALL
++		/* only show nickname in RPL_WELCOME reply on connect for all clients -- mh 20200115*/
++		sprintf(buf, "%s", nick);
++#else
++#ifdef SPOOF_WELCOME
++		/* only show nickname in RPL_WELCOME reply on connect for spoofed clients
++		 * but  full nickname!user@host for non-spoofed clients -- mh 20200112 */
++		if (IsSpoofed(sptr))
++		{
++			sprintf(buf, "%s", nick);
++		}
++		else
++		{
++			sprintf(buf, "%s!%s@%s", nick, user->username, user->host);
++		}
++#else
+ 		sprintf(buf, "%s!%s@%s", nick, user->username, user->host);
+-		add_to_uid_hash_table(sptr->user->uid, sptr);
++#endif
++#endif
+ 		sptr->exitc = EXITC_REG;
+ 		sendto_one(sptr, replies[RPL_WELCOME], ME, BadTo(nick), buf);
+ 		/* This is a duplicate of the NOTICE but see below...*/
+@@ -765,11 +803,19 @@
+ 		}
+ 		
+ 		sendto_one(sptr, replies[RPL_YOURID], ME, BadTo(parv[0]),
+-			sptr->user->uid);
++			sptr->uid);
+ 		(void)m_lusers(sptr, sptr, 1, parv);
+ 		(void)m_motd(sptr, sptr, 1, parv);
+ 		if (IsRestricted(sptr))
+ 			sendto_one(sptr, replies[ERR_RESTRICTED], ME, BadTo(nick));
++#ifdef SPOOF_NOTICE
++		/* send a notice to client if the connection is spoofed.
++		 * notice is defined as SPOOF_NOTICE in config.h -- mh 20191230 */
++		if (IsSpoofed(sptr))
++		{
++			sendto_one(sptr, ":%s NOTICE %s :%s", ME, nick, SPOOF_NOTICE);
++		}
++#endif
+ 		if (IsConfNoResolve(sptr->confs->value.aconf))
+ 		{
+ 			sendto_one(sptr, ":%s NOTICE %s :Due to an administrative"
+@@ -805,8 +851,12 @@
+ 		}
+ 		sendto_one(acptr,
+ 				":%s UNICK %s %s %s %s %s %s :%s",
+-				user->servp->sid, nick, user->uid,
++				user->servp->sid, nick, sptr->uid,
++#ifdef SPOOF
++				user->username, user->host, get_client_ip(sptr),
++#else
+ 				user->username, user->host, user->sip,
++#endif
+ 				(*buf) ? buf : "+", sptr->info);
+ 	}	/* for(my-leaf-servers) */
+ #ifdef	USE_SERVICES
+@@ -935,10 +985,10 @@
+ 		}
+ 		/* "NICK 0" or "NICK UID" received */
+ 		if ((nick[0] == '0' && nick[1] == '\0') ||
+-		    !mycmp(nick, sptr->user->uid))
++		    !mycmp(nick, sptr->uid))
+ 		{
+ 			/* faster equivalent of
+-			** !strcmp(sptr->name, sptr->user->uid) */
++			** !strcmp(sptr->name, sptr->uid) */
+ 			if (isdigit(sptr->name[0]))
+ 			{
+ 				/* user nick is already an UID */
+@@ -947,7 +997,7 @@
+ 			else
+ 			{
+ 				/* user changing his nick to UID */
+-				strncpyzt(nick, sptr->user->uid, UIDLEN + 1);
++				strncpyzt(nick, sptr->uid, UIDLEN + 1);
+ 				goto nickkilldone;
+ 			}
+ 		}
+@@ -961,7 +1011,7 @@
+ 				   parv[1], parv[0],
+ 				   get_client_name(cptr, FALSE));
+                 sendto_serv_butone(NULL, ":%s KILL %s :%s (%s[%s] != %s)",
+-                                   me.name, sptr->user->uid, me.name,
++                                   me.name, sptr->uid, me.name,
+                                    sptr->name, sptr->from->name,
+                                    get_client_name(cptr, TRUE));
+                 sptr->flags |= FLAGS_KILLED;
+@@ -989,11 +1039,11 @@
+ 			if (sptr != cptr && sptr->user) /* bad nick change */
+ 			    {
+ 				sendto_one(cptr, ":%s KILL %s :%s (%s <- %s[%s])",
+-					   ME, sptr->user->uid, ME, parv[1],
++					   ME, sptr->uid, ME, parv[1],
+ 					   nick, cptr->name);
+ 				sendto_serv_butone(cptr,
+ 					":%s KILL %s :%s (%s <- %s!%s@%s)",
+-					ME, sptr->user->uid, ME,
++					ME, sptr->uid, ME,
+ 					get_client_name(cptr, FALSE),
+ 					parv[0], user, host);
+ 				sptr->flags |= FLAGS_KILLED;
+@@ -1162,7 +1212,7 @@
+ #if defined(CLIENTS_CHANNEL) && (CLIENTS_CHANNEL_LEVEL & CCL_NICK)
+ 		if (MyConnect(sptr))
+ 			sendto_flag(SCH_CLIENT, "%s %s %s %s NICK %s",
+-				sptr->user->uid, parv[0],
++				sptr->uid, parv[0],
+ 				sptr->user->username, sptr->user->host, nick);
+ #endif
+ 		if (sptr->user) /* should always be true.. */
+@@ -1178,7 +1228,7 @@
+ 			sendto_flag(SCH_NOTICE,
+ 				    "Illegal NICK change: %s -> %s from %s",
+ 				    parv[0], nick, get_client_name(cptr,TRUE));
+-		sendto_serv_butone(cptr, ":%s NICK :%s", sptr->user->uid, nick);
++		sendto_serv_butone(cptr, ":%s NICK :%s", sptr->uid, nick);
+ 		if (sptr->name[0])
+ 			(void)del_from_client_hash_table(sptr->name, sptr);
+ 		(void)strcpy(sptr->name, nick);
+@@ -1189,7 +1239,7 @@
+ 
+ 		/* This had to be copied here to avoid problems.. */
+ 		(void)strcpy(sptr->name, nick);
+-		if (sptr->user)
++		if (sptr->user && !IsCAPNegotiation(sptr))
+ 		{
+ 			/*
+ 			** USER already received, now we have NICK.
+@@ -1322,7 +1372,7 @@
+ 		** Ouch, this new client is trying to take an already
+ 		** existing nickname..
+ 		*/
+-		if (*acptr->user->uid)
++		if (*acptr->uid)
+ 		    {
+ 			char	path[BUFSIZE];
+ 
+@@ -1420,7 +1470,7 @@
+ 	/* we don't have hopcount in unick, we take it from sptr */
+ 	acptr->hopcount = sptr->hopcount;
+ 	/* The client is already killed if the uid is too long. */
+-	strcpy(acptr->user->uid, uid);
++	strcpy(acptr->uid, uid);
+ 	strcpy(acptr->user->sip, parv[5]);
+ 	add_to_uid_hash_table(uid, acptr);
+ 	{
+@@ -1979,11 +2029,10 @@
+ 		0,	/* joined */
+ 		0,	/* flags */
+ 		NULL,	/* servp */
+-		0, NULL, NULL,	/* hashc, uhnext, bcptr */
++		NULL,	/* bcptr */
+ 		"<Unknown>",	/* user */
+-		"0",		/* uid */
+ 		"<Unknown>",	/* host */
+-		"<Unknown>",	/* server */
++		"<Unknown>"	/* server */
+ 	    };
+ 	Link	*lp;
+ 	anUser	*user;
+@@ -2042,6 +2091,20 @@
+ 
+ 	if (IsAnOper(acptr))
+ 		sendto_one(sptr, replies[RPL_WHOISOPERATOR], ME, BadTo(sptr->name), name);
++#ifdef SASL_WHOISLOGGEDIN
++    if (IsSASLAuthed(acptr))
++    {
++        sendto_one(sptr, replies[RPL_WHOISLOGGEDIN], ME, BadTo(sptr->name), name, acptr->sasl_user);
++    }
++#endif
++#ifdef SPOOF_WHOISCLOAKED
++	/* send a 320 numeric RPL_WHOISCLOAKED reply if client is spoofed.
++	 * reply defined as SPOOF_WHOISCLOAKED in config.h -- mh 20191230 */
++	if (IsSpoofed(acptr))
++	{
++		sendto_one(sptr, replies[RPL_WHOISCLOAKED], ME, BadTo(sptr->name), name, SPOOF_WHOISCLOAKED);
++	}
++#endif
+ 
+ 	if (acptr->user && MyConnect(acptr))
+ 		sendto_one(sptr, replies[RPL_WHOISIDLE], ME, BadTo(sptr->name),
+@@ -2205,6 +2268,9 @@
+ 	char	ipbuf[BUFSIZE];
+ 	int	what,i;
+ 	char 	*s;
++#ifdef PASSOPTS
++	Reg char *passopts; /* password options set in extended PASS argument -- mh 20200102 */
++#endif
+ 
+ 	if (MyConnect(cptr) && IsUnknown(cptr) &&
+ 		IsConfServeronly(cptr->acpt->confs->value.aconf))
+@@ -2300,7 +2366,39 @@
+ 	
+ 	reorder_client_in_list(sptr);
+ 	if (sptr->info != DefInfo)
++#ifdef PASSOPTS
++	{
++		/* if we have extended PASS arguments, attempt to parse them. -- mh 20200102 */
++		/* see doc/passopts.txt for more information -- mh 20200112 */
++
++		/* do we need to check if sptr->info is NULL first? i dont think so -- mh 20200102 */
++		if (strlen(sptr->info) > 0)
++		{
++			/* extended PASS arguments found */
++			for (s = passopts = strtoken(&s, sptr->info, " "); *s; s++)
++			{
++				if (!isdigit(*s))
++				{
++					/* passopts must be numeric only */
++					break;
++				}
++			}
++			if (*s == '\0')
++			{
++				/* passopts valid, parse it */
++				i = atoi(passopts); /* overflow checking needed? -- mh 20200102 */
++				if (POFLAG_REQPASS & i)
++				{
++					/* password required to match I-line password */
++					SetReqPass(sptr);
++				}
++			}
++		}
++		MyFree(sptr->info);
++	}
++#else
+ 		MyFree(sptr->info);
++#endif
+ 	if (strlen(realname) > REALLEN)
+ 		realname[REALLEN] = '\0';
+ 	sptr->info = mystrdup(realname);
+@@ -2308,7 +2406,7 @@
+ 	sptr->user2 = mystrdup(umodes);
+ 	sptr->user3 = mystrdup(server);
+ #endif
+-	if (sptr->name[0]) /* NICK already received, now we have USER... */
++	if (sptr->name[0] && !IsCAPNegotiation(sptr)) /* NICK already received, now we have USER... */
+ 	{
+ 		return register_user(cptr, sptr, sptr->name, username);
+ 	}
+@@ -2490,7 +2588,7 @@
+ 		if (acptr->user)
+ 		    {
+ 			sendto_serv_v(cptr, SV_UID, ":%s KILL %s :%s!%s",
+-				      parv[0], acptr->user->uid, inpath, path);
++				      parv[0], acptr->uid, inpath, path);
+ 		    }
+ 		else
+ 			sendto_serv_butone(cptr, ":%s KILL %s :%s!%s",
+@@ -2575,7 +2673,7 @@
+ 		    }
+ 		if (sptr->user->flags & FLAGS_AWAY)
+ 			sendto_serv_butone(cptr, ":%s MODE %s :-a",
+-				sptr->user->uid, parv[0]);
++				sptr->uid, parv[0]);
+ 		/* sendto_serv_butone(cptr, ":%s AWAY", parv[0]); */
+ 		if (MyConnect(sptr))
+ 			sendto_one(sptr, replies[RPL_UNAWAY], ME, BadTo(parv[0]));
+@@ -2613,7 +2711,7 @@
+ 		istat.is_awaymem += len;
+ 		away = (char *)MyMalloc(len);
+ 		sendto_serv_butone(cptr, ":%s MODE %s :+a",
+-			sptr->user->uid, parv[0]);
++			sptr->uid, parv[0]);
+ 	    }
+ 
+ 	sptr->user->flags |= FLAGS_AWAY;
+@@ -3280,7 +3378,7 @@
+ 			if (acptr == cptr || acptr == sptr)
+ 				continue;
+ 			sendto_one(acptr, ":%s MODE %s :%s",
+-				   sptr->user->uid, sptr->name, buf);
++				   sptr->uid, sptr->name, buf);
+ 		    }
+ 
+ 	if (cptr && MyClient(cptr))
+@@ -3309,28 +3407,28 @@
+ 	if (MyConnect(sptr))
+ 	{
+ 		sendto_one(sptr, replies[RPL_SAVENICK], cptr ? cptr->name : ME,
+-			   sptr->name, sptr->user->uid);
++			   sptr->name, sptr->uid);
+ #if defined(CLIENTS_CHANNEL) && (CLIENTS_CHANNEL_LEVEL & CCL_NICK)
+ 		sendto_flag(SCH_CLIENT, "%s %s %s %s NICK %s",
+-			sptr->user->uid, sptr->name, sptr->user->username,
+-			sptr->user->host, sptr->user->uid);
++			sptr->uid, sptr->name, sptr->user->username,
++			sptr->user->host, sptr->uid);
+ #endif
+ 	}
+ 	
+ 	sendto_common_channels(sptr, ":%s NICK :%s",
+-			       sptr->name, sptr->user->uid);
++			       sptr->name, sptr->uid);
+ 	add_history(sptr, NULL);
+ #ifdef	USE_SERVICES
+ 	check_services_butone(SERVICE_WANT_NICK, sptr->user->servp, sptr,
+-			      ":%s NICK :%s", sptr->name, sptr->user->uid);
++			      ":%s NICK :%s", sptr->name, sptr->uid);
+ #endif
+ 	sendto_serv_v(cptr, SV_UID, ":%s SAVE %s :%s%c%s", 
+-		cptr ? cptr->serv->sid : me.serv->sid, sptr->user->uid, 
++		cptr ? cptr->serv->sid : me.serv->sid, sptr->uid,
+ 		cptr ? cptr->name : ME, cptr ? '!' : ' ', path);
+ 	sendto_flag(SCH_SAVE, "Received SAVE message for %s. Path: %s!%s",
+ 		    sptr->name, cptr ? cptr->name : ME, path);
+ 	del_from_client_hash_table(sptr->name, sptr);
+-	strcpy(sptr->name, sptr->user->uid);
++	strcpy(sptr->name, sptr->uid);
+ 	add_to_client_hash_table(sptr->name, sptr);
+ }
+ 
+@@ -3354,7 +3452,7 @@
+ 
+ 	/* need sanity checks here -syrk */
+ 	acptr = find_uid(parv[1], NULL);
+-	if (acptr && strcasecmp(acptr->name, acptr->user->uid))
++	if (acptr && strcasecmp(acptr->name, acptr->uid))
+ 	{
+ 		save_user(cptr, acptr, path);
+ 		ircstp->is_save++;
+@@ -3373,13 +3471,13 @@
+ 	Link	*tmp;
+ 
+ 	/* We cannot judge not our clients. Yet. */
+-	if (!MyConnect(cptr) || IsServer(cptr))
++	if ((!MyConnect(cptr) && (IsAnOper(cptr)||IsService(cptr))) || IsServer(cptr))
+ 		return 1;
+ 
+ 	/* minimal control, but nothing else service can do anyway. */
+ 	if (IsService(cptr))
+ 	{
+-		if (function == ACL_TKLINE &&
++		if ((function == ACL_TKLINE || function == ACL_UNTKLINE) &&
+ 			(cptr->service->wants & SERVICE_WANT_TKLINE))
+ 			return 1;
+ 		if (function == ACL_KLINE &&
+Index: ircd/s_sasl_ext.h
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/ircd/s_sasl_ext.h b/ircd/s_sasl_ext.h
+new file mode 100644
+--- /dev/null	(date 1696269853917)
++++ b/ircd/s_sasl_ext.h	(date 1696269853917)
+@@ -0,0 +1,28 @@
++/************************************************************************
++ *   IRC - Internet Relay Chat, ircd/s_sasl_ext.h
++ *   Copyright (C) 2021 IRCnet.com team
++ *
++ *   This program is free software; you can redistribute it and/or modify
++ *   it under the terms of the GNU General Public License as published by
++ *   the Free Software Foundation; either version 1, or (at your option)
++ *   any later version.
++ *
++ *   This program is distributed in the hope that it will be useful,
++ *   but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *   GNU General Public License for more details.
++ *
++ *   You should have received a copy of the GNU General Public License
++ *   along with this program; if not, write to the Free Software
++ *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
++ */
++
++/*  This file contains external definitions for global variables and functions
++    defined in ircd/s_sasl.c.
++ */
++
++/*  External definitions for global functions.
++ */
++#define EXTERN
++EXTERN int process_implicit_sasl_abort(aClient *sptr);
++#undef EXTERN
+Index: ircd/s_misc.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/ircd/s_misc.c b/ircd/s_misc.c
+--- a/ircd/s_misc.c	(revision 8d524c1f0133df9686bfc30b7545a14bf4c56e54)
++++ b/ircd/s_misc.c	(date 1696269853917)
+@@ -196,7 +196,11 @@
+ 				(void)sprintf(nbuf, "%s[%.*s@%s]",
+ 					sptr->name, USERLEN,
+ 					(!(sptr->flags & FLAGS_GOTID)) ? "" :
++#ifdef SPOOF
++					sptr->auth, sptr->user ? get_client_ip(sptr) :
++#else
+ 					sptr->auth, sptr->user ? sptr->user->sip :
++#endif
+ #ifdef INET6 
+ 					      inetntop(AF_INET6,
+ 						       (char *)&sptr->ip,
+@@ -247,6 +251,20 @@
+ 	return nbuf;
+ }
+ 
++#ifdef SPOOF
++char	*get_client_ip(aClient *cptr)
++{
++	if(IsSpoofed(cptr))
++	{
++		return SPOOF_IP;
++	}
++	else
++	{
++		return cptr->user->sip;
++	}
++}
++#endif
++
+ /*
+  * Form sockhost such that if the host is of form user@host, only the host
+  * portion is copied.
+@@ -471,7 +489,7 @@
+ #  if (CLIENTS_CHANNEL_LEVEL & CCL_QUITINFO)
+ 				" :%s"
+ #  endif
+-				, sptr->user->uid, sptr->name,
++				, sptr->uid, sptr->name,
+ 				sptr->user->username, sptr->user->host,
+ 				sptr->exitc
+ #  if (CLIENTS_CHANNEL_LEVEL & CCL_QUITINFO)
+@@ -750,6 +768,12 @@
+ 		/* remove server from svrtop */
+ 		unregister_server(sptr);
+ 	}
++	// We cannot use IsCAPNegotiation() because MyConnect() would return false
++	// because close_connection() was already executed in exit_client()
++	else if(!IsPerson(sptr) && cptr == sptr && sptr->cap_negotation && sptr->user && *sptr->uid) {
++	    // Someone who got an UID during SASL authentication but did not register
++        del_from_uid_hash_table(sptr->uid, sptr);
++	}
+ 	else if (!IsPerson(sptr) && !IsService(sptr))
+ 	{
+ 				    /* ...this test is *dubious*, would need
+@@ -770,7 +794,7 @@
+ 			if ((sptr->flags & FLAGS_SPLIT) == 0)
+ 			{
+ 				sendto_serv_butone(cptr, ":%s QUIT :%s",
+-						   sptr->user->uid, comment);
++						   sptr->uid, comment);
+ #ifdef	USE_SERVICES
+ 				check_services_butone(SERVICE_WANT_QUIT|
+ 						      SERVICE_WANT_RQUIT, 
+@@ -794,7 +818,7 @@
+ 						if (acptr->flags & FLAGS_HIDDEN)
+ 							sendto_one(acptr,
+ 								":%s QUIT :%s",
+-								sptr->user->uid,
++								sptr->uid,
+ 								comment);
+ 					}
+ #ifdef	USE_SERVICES
+@@ -891,7 +915,7 @@
+ 			/* remove from uid hash table */
+ 			if (sptr->user)
+ 			{
+-				del_from_uid_hash_table(sptr->user->uid, sptr);
++				del_from_uid_hash_table(sptr->uid, sptr);
+ 			}
+ 
+ 			/* Add user to history */
+Index: ircd/s_cap.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/ircd/s_cap.c b/ircd/s_cap.c
+new file mode 100644
+--- /dev/null	(date 1696269853917)
++++ b/ircd/s_cap.c	(date 1696269853917)
+@@ -0,0 +1,203 @@
++/*
++ *   IRC - Internet Relay Chat, ircd/s_cap.c
++ *
++ *   Copyright (C) 2021 IRCnet.com team
++ *   Thanks to Lee Hardy and the IRCv3 Working Group!
++ *
++ *   This program is free software; you can redistribute it and/or modify
++ *   it under the terms of the GNU General Public License as published by
++ *   the Free Software Foundation; either version 1, or (at your option)
++ *   any later version.
++ *
++ *   This program is distributed in the hope that it will be useful,
++ *   but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *   GNU General Public License for more details.
++ *
++ *   You should have received a copy of the GNU General Public License
++ *   along with this program; if not, write to the Free Software
++ *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
++ */
++
++#include "os.h"
++#include "s_defines.h"
++#include "s_externs.h"
++#include "s_sasl_ext.h"
++
++struct Cap {
++    const char *name;
++    const int flag;
++} cap_tab[] = {
++        {"sasl",           CAP_SASL},
++        {NULL,             0}
++};
++
++void send_cap_list(aClient *target, char *sub_cmd, int flags) {
++    char buf[BUFSIZE];
++    int prfx_len, cnt = 0;
++    struct Cap *cap;
++
++    prfx_len = snprintf(buf, BUFSIZE, ":%s CAP %s %s :", ME, BadTo(target->name), sub_cmd);
++
++    for (cap = cap_tab; cap->name; cap++) {
++        if(flags != -1 && !(cap->flag & flags)) {
++            continue;
++        }
++
++        if (strlen(buf) + strlen(cap->name) + 1 >= BUFSIZE - 3) {
++            sendto_one(target, buf);
++            prfx_len = snprintf(buf, sizeof(buf), ":%s CAP %s %s :", ME, BadTo(target->name), sub_cmd);
++        }
++
++        strcat(buf, cap->name);
++        strcat(buf, " ");
++        cnt++;
++    }
++
++    if (strlen(buf) > prfx_len || cnt == 0) {
++        sendto_one(target, buf);
++    }
++}
++
++/*
++ * Finds a supported cap by its name.
++ */
++struct Cap *find_cap(char *name) {
++    struct Cap *cap;
++
++    if (!name) {
++        return NULL;
++    }
++
++    for (cap = cap_tab; cap->name; cap++) {
++        if (!strcasecmp((char *) cap->name, name)) {
++            return cap;
++        }
++    }
++
++    return NULL;
++}
++
++/*
++ * Lists the capabilities supported by this server.
++ * The registration will be suspended until "CAP END" is received from the client.
++ */
++void cap_ls(aClient *target, char *arg) {
++
++    if (!IsRegistered(target)) {
++        target->cap_negotation = 1;
++    }
++
++    send_cap_list(target, "LS", -1);
++}
++
++/*
++ * A client requests a list of the capabilities currently active for his connection.
++ */
++void cap_list(aClient *target, char *arg) {
++    struct Cap *cap;
++    send_cap_list(target, "LIST", target->caps);
++}
++
++/*
++ * A client is changing his capabilities.
++ */
++void cap_req(aClient *target, char *arg) {
++    char buf[2][BUFSIZE], *p = NULL, *s, *arg_copy;
++    int flags_add = 0, flags_del = 0;
++    int buf_idx = 0, prfx_len;
++    struct Cap *cap;
++
++    if (!arg || !*arg) {
++        return;
++    }
++
++    if (!IsRegistered(target)) {
++        // The registration will be suspended until "CAP END" is received from the client.
++        target->cap_negotation = 1;
++    }
++
++    arg_copy = mystrdup(arg);
++    prfx_len = snprintf(buf[0], BUFSIZE, ":%s CAP %s ACK :", ME, BadTo(target->name));
++    memset(buf[1], 0, BUFSIZE);
++
++    for (s = strtoken(&p, arg_copy, " "); s; s = strtoken(&p, NULL, " ")) {
++        if ((cap = find_cap(*s == '-' ? s + 1 : s))) {
++            if (strlen(buf[buf_idx]) + strlen(cap->name) + 1 >= BUFSIZE - 3) {
++                prfx_len = snprintf(buf[1], BUFSIZE, ":%s CAP %s ACK :", ME, BadTo(target->name));
++                buf_idx = 1;
++            }
++
++            if (*s != '-') {
++                flags_add |= cap->flag;
++            }
++            else {
++                flags_del |= cap->flag;
++            }
++
++            strcat(buf[buf_idx], s);
++            strcat(buf[buf_idx], " ");
++        }
++        else {
++            // The server MUST NOT make any change to any capabilities if it replies with a NAK subcommand.
++            sendto_one(target, ":%s CAP %s NAK :%s", ME, BadTo(target->name), arg);
++            MyFree(arg_copy);
++            return;
++        }
++    }
++
++    target->caps |= flags_add;
++    target->caps &= ~flags_del;
++
++    // Send ACK
++    if (strlen(buf[0]) > prfx_len) {
++        sendto_one(target, buf[0]);
++    }
++    if (strlen(buf[1]) > prfx_len) {
++        sendto_one(target, buf[1]);
++    }
++
++    MyFree(arg_copy);
++}
++
++/*
++ * The capability negotiation is complete.
++ */
++int cap_end(aClient *cptr, aClient *sptr, char *arg) {
++    if (IsRegistered(cptr)) {
++        return 0;
++    }
++
++    if((sptr->sasl_service != NULL || sptr->sasl_auth_attempts > 0) && !IsSASLAuthed(sptr)) {
++        // SASL authentication exchange has been aborted
++        return process_implicit_sasl_abort(sptr);
++    }
++
++    cptr->cap_negotation = 0;
++
++    // complete registration if we received NICK and USER already
++    if (sptr->name[0] && sptr->user) {
++        return register_user(cptr, sptr, sptr->name, sptr->user->username);
++    }
++
++    return 0;
++}
++
++int m_cap(aClient *cptr, aClient *sptr, int parc, char *parv[]) {
++    int ret = 0;
++
++    if (!strcasecmp(parv[1], "LS")) {
++        cap_ls(sptr, parv[2]);
++    }
++    else if (!strcasecmp(parv[1], "LIST")) {
++        cap_list(sptr, parv[2]);
++    }
++    else if (!strcasecmp(parv[1], "REQ")) {
++        cap_req(sptr, parv[2]);
++    }
++    else if (!strcasecmp(parv[1], "END")) {
++        ret = cap_end(cptr, sptr, NULL);
++    }
++
++    return ret;
++}
+\ No newline at end of file
+Index: ircd/s_err.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/ircd/s_err.c b/ircd/s_err.c
+--- a/ircd/s_err.c	(revision 8d524c1f0133df9686bfc30b7545a14bf4c56e54)
++++ b/ircd/s_err.c	(date 1696269853917)
+@@ -352,7 +352,19 @@
+ #endif
+ /* 318 RPL_ENDOFWHOIS */	":%s 318 %s %s :End of WHOIS list.",
+ /* 319 RPL_WHOISCHANNELS */	":%s 319 %s %s :%s",
++#ifdef RPL_WHOISEXTRA
++/* 320 RPL_WHOISEXTRA */    ":%s 320 %s %s :%s", /* catch-all extra WHOIS information reply - non-standard use of 320 -- mh 20200111 */
++#else
++#ifdef RPL_WHOISCLOAKED
++#ifndef RPL_WHOISEXTRA
++/* 320 RPL_WHOISCLOAKED */  ":%s 320 %s %s :%s", /* client is cloaked/spoofed - non-standard use of 320 -- mh 20191230 */
++#endif
++#else
++#ifndef RPL_WHOISEXTRA
+ /* 320 */ (char *)NULL,
++#endif
++#endif
++#endif
+ /* 321 RPL_LISTSTART */	":%s 321 %s Channel :Users  Name",
+ /* 322 RPL_LIST */	":%s 322 %s %s %d :%s",
+ /* 323 RPL_LISTEND */	":%s 323 %s :End of LIST",
+@@ -362,7 +374,11 @@
+ /* 327 */ (char *)NULL,
+ /* 328 */ (char *)NULL,
+ /* 329 */ (char *)NULL,
+-/* 330 */ (char *)NULL,
++#ifdef SASL_WHOISLOGGEDIN
++/* 330 RPL_WHOISLOGGEDIN */	":%s 330 %s %s %s :is logged in as",
++#else
++/* 330 RPL_WHOISLOGGEDIN */	(char *)NULL,
++#endif
+ /* 331 RPL_NOTOPIC */	":%s 331 %s %s :No topic is set.",
+ /* 332 RPL_TOPIC */	":%s 332 %s %s :%s",
+ /* 333 RPL_TOPIC_WHO_TIME */	":%s 333 %s %s %s %lu",
+@@ -951,15 +967,15 @@
+ /* 897 */ (char *)NULL,
+ /* 898 */ (char *)NULL,
+ /* 899 */ (char *)NULL,
+-/* 900 */ (char *)NULL,
++/* 900 RPL_LOGGEDIN */		":%s 900 %s :You are now logged in as %s.",
+ /* 901 */ (char *)NULL,
+ /* 902 */ (char *)NULL,
+-/* 903 */ (char *)NULL,
+-/* 904 */ (char *)NULL,
+-/* 905 */ (char *)NULL,
+-/* 906 */ (char *)NULL,
+-/* 907 */ (char *)NULL,
+-/* 908 */ (char *)NULL,
++/* 903 RPL_SASLSUCCESS */   ":%s 903 %s :SASL authentication successful",
++/* 904 ERR_SASLFAIL */		":%s 904 %s :SASL authentication failed",
++/* 905 ERR_SASLTOOLONG */	":%s 905 %s :SASL message too long",
++/* 906 ERR_SASLABORTED */	":%s 906 %s :SASL authentication aborted",
++/* 907 ERR_SASLALREADY */	":%s 907 %s :You have already completed SASL authentication",
++/* 908 RPL_SASLMECHS */     ":%s 908 %s %s :are available SASL mechanisms",
+ /* 909 */ (char *)NULL,
+ /* 910 */ (char *)NULL,
+ /* 911 */ (char *)NULL,
